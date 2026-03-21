@@ -95,6 +95,7 @@ async def create_channel_service(ws: "Workspace", _):
         config=temp_config,
         on_last_dispatch=on_last_dispatch,
         workspace_dir=ws.workspace_dir,
+        workspace = ws,
     )
     ws._service_manager.services["channel_manager"] = cm
     return cm

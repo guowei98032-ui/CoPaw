@@ -163,6 +163,35 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
         # Register hooks
         self._register_hooks()
 
+    async def handle_interrupt(
+        self,
+        msg: Msg | list[Msg] | None = None,
+        structured_model: Type[BaseModel] | None = None,
+    ) -> Msg:
+        """The post-processing logic when the reply is interrupted by the
+        user or something else.
+
+        Args:
+            msg (`Msg | list[Msg] | None`, optional):
+                The input message(s) to the agent.
+            structured_model (`Type[BaseModel] | None`, optional):
+                The required structured output model.
+        """
+
+        response_msg = Msg(
+            self.name,
+            "我注意到你打断了我. 我能为你做什么？",
+            "assistant",
+            metadata={
+                # Expose this field to indicate the interruption
+                "_is_interrupted": True,
+            },
+        )
+
+        await self.print(response_msg, True)
+        await self.memory.add(response_msg)
+        return response_msg
+    
     def _create_toolkit(
         self,
         namesake_strategy: NamesakeStrategy = "skip",

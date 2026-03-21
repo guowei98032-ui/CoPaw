@@ -2,21 +2,27 @@
 """Matrix channel implementation using matrix-nio."""
 
 import asyncio
+import json
 import logging
 import mimetypes
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+import uuid
 import markdown
 import pymdownx.tasklist
 import aiohttp
+import re
+from typing import List, Tuple
 from agentscope_runtime.engine.schemas.agent_schemas import (
     AgentRequest,
     AudioContent,
     ContentType,
     FileContent,
     ImageContent,
+    MessageType,
+    RunStatus,
     TextContent,
     VideoContent,
 )
@@ -32,7 +38,10 @@ from nio import (
     UploadError,
 )
 
-from copaw.config.context import get_current_workspace_dir
+from copaw.app.channels.schema import DEFAULT_CHANNEL
+from copaw.app.multi_agent_manager import MultiAgentManager
+from copaw.app.runner.models import ChatSpec
+from copaw.app.workspace.workspace import Workspace
 from copaw.constant import DEFAULT_MEDIA_DIR
 
 from ....config.config import MatrixConfig
@@ -68,6 +77,7 @@ class MatrixChannel(BaseChannel):
         deny_message: str = "",
         require_mention: bool = False,
         workspace_dir: Path = None,
+        workspace: Workspace = None,
         **_kwargs: Any,
     ) -> None:
         super().__init__(
@@ -99,6 +109,37 @@ class MatrixChannel(BaseChannel):
             self._media_dir = DEFAULT_MEDIA_DIR
         self._media_dir.mkdir(parents=True, exist_ok=True)
 
+        token_store_path = self._workspace_dir / "matrix"
+        self._token_store_path = Path(token_store_path)
+        self._token_store_path.mkdir(parents=True, exist_ok=True)
+        self._token_store_path = self._token_store_path / "token.json"
+        self._device_id = user_id
+
+        self._workspace = workspace
+        
+     # ========== Token 持久化 ==========
+    def _load_sync_token(self) -> Optional[str]:
+        """从文件加载上次同步的 token"""
+        if self._token_store_path.exists():
+            try:
+                data = json.loads(self._token_store_path.read_text())
+                token = data.get("next_batch")
+                if token:
+                    logger.info(f"恢复 sync token: {token[:30]}...")
+                    return token
+            except Exception as e:
+                logger.warning(f"加载 token 失败：{e}")
+        return None
+    
+    def _save_sync_token(self, token: str) -> None:
+        """保存同步 token 到文件"""
+        try:
+            self._token_store_path.write_text(
+                json.dumps({"next_batch": token, "device_id": self._device_id})
+            )
+        except Exception as e:
+            logger.error(f"保存 token 失败：{e}")
+    
     def _mxc_to_http(self, mxc_url: str) -> str:
         """Convert mxc://server/media_id to an authenticated HTTP URL."""
         if not mxc_url.startswith("mxc://"):
@@ -136,6 +177,7 @@ class MatrixChannel(BaseChannel):
             "Matrix channel must be configured via config file.",
         )
 
+
     @classmethod
     def from_config(
         cls,
@@ -146,6 +188,7 @@ class MatrixChannel(BaseChannel):
         filter_tool_messages: bool = False,
         filter_thinking: bool = False,
         workspace_dir: Path = None,
+        workspace: Workspace = None,
     ) -> "MatrixChannel":
         return cls(
             process=process,
@@ -164,6 +207,7 @@ class MatrixChannel(BaseChannel):
             deny_message=config.deny_message,
             require_mention=config.require_mention,
             workspace_dir = workspace_dir,
+            workspace = workspace,
         )
 
     def build_agent_request_from_native(
@@ -175,7 +219,7 @@ class MatrixChannel(BaseChannel):
         meta = dict(payload.get("meta") or {})
      
         room_id = meta.get("room_id") or ""
-        sender = meta.get("sender") or ""
+        sender_id = meta.get("sender_id") or ""
         content_parts = payload.get("content_parts") or []
 
         if not content_parts:
@@ -185,7 +229,7 @@ class MatrixChannel(BaseChannel):
         session_id = self.resolve_session_id(room_id)
         request = self.build_agent_request_from_user_content(
             channel_id=self.channel,
-            sender_id=sender,
+            sender_id=sender_id,
             session_id=session_id,
             content_parts=content_parts,
             channel_meta={"room_id": room_id},
@@ -211,9 +255,78 @@ class MatrixChannel(BaseChannel):
         """
         if isinstance(payload, dict):
             room_id = payload.get("room_id") or ""
-            return f"{self.channel}:{self.user_id}:{room_id}"
+            meta = payload.get("meta") or {}
+            is_command = meta.get("is_stop_command") or False
+            if is_command:
+                return f"{str(uuid.uuid4())}"
+            else:
+                return f"{self.channel}:{self.user_id}:{room_id}"
         return super().get_debounce_key(payload)
 
+    async def _run_process_loop(
+        self,
+        request: "AgentRequest",
+        to_handle: str,
+        send_meta: Dict[str, Any],
+    ) -> None:
+        """
+        Run _process and send events. Override to use channel-specific
+        loop (e.g. DingTalk _process_one_request with webhook sends).
+        """
+        last_response = None
+        try:
+            receiver_id = self.user_id.split(":")[0].lstrip("@")
+            name = "New Chat"
+            chat_id = str(uuid.uuid4())
+            spec = ChatSpec(
+                id=chat_id,
+                name=name,
+                session_id=request.session_id,
+                user_id=request.user_id,
+                channel=request.channel,
+                meta={'room_id':send_meta['room_id'],'receiver_id':receiver_id}
+            )
+            await self._workspace.chat_manager.create_chat(spec)
+
+            tracker = self._workspace.task_tracker
+            queue, _ = await tracker.attach_or_start(
+                chat_id,
+                request,
+                self._process,
+            )
+
+            #self._workspace.task_tracker.attach_or_start(chat.id)
+            async for event in tracker.stream_from_queue(queue):
+                obj = getattr(event, "object", None)
+                status = getattr(event, "status", None)
+                if obj == "message" and status == RunStatus.Completed:
+                    await self.on_event_message_completed(
+                        request,
+                        to_handle,
+                        event,
+                        send_meta,
+                    )
+                elif obj == "response":
+                    last_response = event
+                    await self.on_event_response(request, event)
+            err_msg = self._get_response_error_message(last_response)
+            if err_msg:
+                await self._on_consume_error(
+                    request,
+                    to_handle,
+                    f"Error: {err_msg}",
+                )
+            if self._on_reply_sent:
+                args = self.get_on_reply_sent_args(request, to_handle)
+                self._on_reply_sent(self.channel, *args)
+        except Exception:
+            logger.exception("channel consume_one failed")
+            await self._on_consume_error(
+                request,
+                to_handle,
+                "An error occurred while processing your request.",
+            )
+    
     async def _handle_event(
         self,
         room: MatrixRoom,
@@ -227,6 +340,7 @@ class MatrixChannel(BaseChannel):
             "room_id": room.room_id,
             "is_group": is_group,
             "bot_mentioned": bot_mentioned,
+            "sender_id":sender,
         }
 
         allowed, deny_msg = self._check_allowlist(sender, is_group=is_group)
@@ -237,7 +351,7 @@ class MatrixChannel(BaseChannel):
 
         if not self._check_group_mention(is_group, meta):
             return
-
+        
         payload = {
             "room_id": room.room_id,
             "sender_id": sender,
@@ -246,6 +360,36 @@ class MatrixChannel(BaseChannel):
         }
         if self._enqueue:
             self._enqueue(payload)
+
+    def parse_command(self,input_str: str) -> Tuple[str, List[str]]:
+        """
+        解析命令输入，处理各种空格情况
+        返回：(命令名，参数列表)
+        """
+        if not input_str.startswith("/"):
+             return "", []
+                                
+        # 1. 去除首尾空格和 '/' 前缀
+        content = input_str.strip().lstrip('/')
+        
+        # 2. 正则匹配：命令 + 任意空格 + 参数
+        # \w+ 匹配命令名，\s* 匹配任意空格，.+ 匹配参数部分
+        match = re.match(r'^(\w+)\s*(.*)$', content)
+        
+        if not match:
+            return "", []
+        
+        command = match.group(1).lower()  # 命令转小写
+        args_str = match.group(2).strip()
+        
+        # 3. 解析参数列表：按逗号分割，去除每个参数的空格
+        if not args_str:
+            return command, []
+        
+        # 按逗号分割，每个参数去除首尾空格，过滤空字符串
+        args = [arg.strip() for arg in args_str.split(',') if arg.strip()]
+        
+        return command, args
 
     async def _message_callback(
         self,
@@ -266,9 +410,27 @@ class MatrixChannel(BaseChannel):
         localpart = self.user_id.split(":")[0].lstrip("@")
         localpart = "@" + localpart
         bot_mentioned = localpart in event.body
-
+        command,args = self.parse_command(event.body)
+        if command == "stop":
+            #user_id: Optional[str] = None,
+            manager :MultiAgentManager = getattr(self._workspace.runner, "_manager", None)
+            agent_ids = manager.list_loaded_agents()
+            for agent_id in agent_ids:
+                agent_workspace = await manager.get_agent(agent_id)
+                chats = await agent_workspace.chat_manager.list_chats(channel=self.channel)
+                for chat in chats:                    
+                    room_id = chat.meta.get("room_id","")
+                    if room_id != room.room_id:
+                        continue
+                    receiver_id = chat.meta.get("receiver_id","")
+                    if len(args) == 0:
+                        await self._workspace.task_tracker.request_stop(chat.id)
+                    else:
+                        if receiver_id in args:
+                            await self._workspace.task_tracker.request_stop(chat.id)
+            return 
+        
         #bot_mentioned = self.user_id in event.body# or localpart in event.body
-
         content_parts = [TextContent(type=ContentType.TEXT, text=event.body)]
         await self._handle_event(
             room,
@@ -530,19 +692,26 @@ class MatrixChannel(BaseChannel):
         )
 
         async def sync_loop() -> None:
-            try:
-                await self.client.sync_forever(
-                    timeout=30000,
-                    full_state=True,
-                )
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:  # pylint: disable=broad-except
-                logger.error(
-                    "Matrix sync loop error: %s",
-                    e,
-                    exc_info=True,
-                )
+            
+            since = self._load_sync_token()
+
+            while True:
+                try:
+                    # ✅ 1. 执行单次同步（而非 sync_forever）
+                    response = await self.client.sync(timeout=30000, since=since)
+                    
+                    # ✅ 2. 同步成功后，立即更新并保存 Token
+                    since = response.next_batch
+                    self._save_sync_token(since)  # ← 关键：每次成功都保存
+
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(
+                        "Matrix sync loop error: %s",
+                        e,
+                        exc_info=True,
+                    )
 
         self._sync_task = asyncio.create_task(sync_loop())
 

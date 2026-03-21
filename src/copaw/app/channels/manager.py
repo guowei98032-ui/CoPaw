@@ -20,6 +20,8 @@ from typing import (
     TYPE_CHECKING,
 )
 
+from copaw.app.workspace.workspace import Workspace
+
 from .base import BaseChannel, ContentType, ProcessHandler, TextContent
 from .registry import get_channel_registry
 from ...config import get_available_channels
@@ -162,6 +164,7 @@ class ChannelManager:
         config: "Config",
         on_last_dispatch: OnLastDispatch = None,
         workspace_dir: Path | None = None,
+        workspace: Workspace | None = None
     ) -> "ChannelManager":
         """Create channels from config (config.json or agent.json).
 
@@ -231,6 +234,7 @@ class ChannelManager:
                 "filter_tool_messages": filter_tool_messages,
                 "filter_thinking": filter_thinking,
                 "workspace_dir": workspace_dir,
+                "workspace" : workspace,
             }
 
             # Only pass kwargs that the channel's from_config accepts

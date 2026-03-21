@@ -6,9 +6,11 @@ import asyncio
 import json
 import logging
 import re
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
+import uuid
 
 from agentscope.message import Msg, TextBlock
 from agentscope.pipeline import stream_printing_messages
@@ -75,7 +77,7 @@ class AgentRunner(Runner):
         self._chat_manager = None  # Store chat_manager reference
         self._mcp_manager = None  # MCP client manager for hot-reload
         self.memory_manager: MemoryManager | None = None
-
+    
     def set_chat_manager(self, chat_manager):
         """Set chat manager for auto-registration.
 
@@ -201,7 +203,7 @@ class AgentRunner(Runner):
                 denial_response=approval_response,
             )
             return
-
+                
         if not approval_consumed and query and _is_command(query):
             logger.info("Command path: %s", query.strip()[:50])
             async for msg, last in run_command_path(request, msgs, self):
@@ -343,11 +345,6 @@ class AgentRunner(Runner):
                     coroutine_task=agent(msgs),
                 ):
                     yield msg, last
-            async for msg, last in stream_printing_messages(
-                agents=[agent],
-                coroutine_task=agent(msgs),
-            ):
-                yield msg, last
 
         except asyncio.CancelledError as exc:
             logger.info(f"query_handler: {session_id} cancelled!")
