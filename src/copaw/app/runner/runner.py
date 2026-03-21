@@ -333,6 +333,16 @@ class AgentRunner(Runner):
             # in the session state.
             agent.rebuild_sys_prompt()
 
+            no_reply = getattr(request,"no_reply",False)
+            if no_reply:
+                await agent.observe(msgs)
+                return
+            else:
+                async for msg, last in stream_printing_messages(
+                    agents=[agent],
+                    coroutine_task=agent(msgs),
+                ):
+                    yield msg, last
             async for msg, last in stream_printing_messages(
                 agents=[agent],
                 coroutine_task=agent(msgs),

@@ -32,6 +32,9 @@ from nio import (
     UploadError,
 )
 
+from copaw.config.context import get_current_workspace_dir
+from copaw.constant import DEFAULT_MEDIA_DIR
+
 from ....config.config import MatrixConfig
 from ..base import (
     BaseChannel,
@@ -64,6 +67,7 @@ class MatrixChannel(BaseChannel):
         allow_from: Optional[list] = None,
         deny_message: str = "",
         require_mention: bool = False,
+        workspace_dir: Path = None,
         **_kwargs: Any,
     ) -> None:
         super().__init__(
@@ -85,6 +89,15 @@ class MatrixChannel(BaseChannel):
         self.bot_prefix = bot_prefix
         self.client: Optional[AsyncClient] = None
         self._sync_task: Optional[asyncio.Task] = None
+        self._http: Optional[aiohttp.ClientSession] = None
+        self._workspace_dir = (
+            Path(workspace_dir).expanduser() if workspace_dir else None
+        )
+        if self._workspace_dir:
+            self._media_dir = self._workspace_dir / "media"
+        else:
+            self._media_dir = DEFAULT_MEDIA_DIR
+        self._media_dir.mkdir(parents=True, exist_ok=True)
 
     def _mxc_to_http(self, mxc_url: str) -> str:
         """Convert mxc://server/media_id to an authenticated HTTP URL."""
@@ -132,6 +145,7 @@ class MatrixChannel(BaseChannel):
         show_tool_details: bool = True,
         filter_tool_messages: bool = False,
         filter_thinking: bool = False,
+        workspace_dir: Path = None,
     ) -> "MatrixChannel":
         return cls(
             process=process,
@@ -149,6 +163,7 @@ class MatrixChannel(BaseChannel):
             allow_from=config.allow_from,
             deny_message=config.deny_message,
             require_mention=config.require_mention,
+            workspace_dir = workspace_dir,
         )
 
     def build_agent_request_from_native(
@@ -195,9 +210,8 @@ class MatrixChannel(BaseChannel):
         session-scoped isolation automatically.
         """
         if isinstance(payload, dict):
-            sender_id = payload.get("sender_id") or ""
             room_id = payload.get("room_id") or ""
-            return f"{self.channel}:{sender_id}:{room_id}"
+            return f"{self.channel}:{self.user_id}:{room_id}"
         return super().get_debounce_key(payload)
 
     async def _handle_event(
@@ -263,6 +277,36 @@ class MatrixChannel(BaseChannel):
             bot_mentioned=bot_mentioned,
         )
 
+    async def _download_image_resource(
+        self,
+        message_id: str,
+        url: str,
+    ) -> Optional[str]:
+        """Download image to media_dir; return local path or None."""
+        try:
+            async with self._http.get(
+                url
+            ) as resp:
+                if resp.status >= 400:
+                    logger.warning(
+                        "matrix image download failed status=%s",
+                        resp.status,
+                    )
+                    return None
+                data = await resp.read()
+                content_type = (
+                    resp.headers.get("Content-Type", "").split(";")[0].strip()
+                )
+            ext = (mimetypes.guess_extension(content_type) or ".jpg").lstrip(
+                ".",
+            )
+            path = self._media_dir / f"{message_id}.{ext}"
+            path.write_bytes(data)
+            return str(path)
+        except Exception:
+            logger.exception("feishu _download_image_resource failed")
+            return None
+        
     async def _media_callback(
         self,
         room: MatrixRoom,
@@ -284,9 +328,11 @@ class MatrixChannel(BaseChannel):
 
         content_parts: List[Any] = []
         if isinstance(event, RoomMessageImage):
-            content_parts.append(
-                ImageContent(type=ContentType.IMAGE, image_url=http_url),
-            )
+            local_file_path = await self._download_image_resource(event.event_id,http_url)
+            if local_file_path is not None:
+                content_parts.append(
+                    ImageContent(type=ContentType.IMAGE, image_url=local_file_path),
+                )
         elif isinstance(event, RoomMessageVideo):
             content_parts.append(
                 VideoContent(type=ContentType.VIDEO, video_url=http_url),
@@ -454,7 +500,8 @@ class MatrixChannel(BaseChannel):
 
         self.client = AsyncClient(self.homeserver, self.user_id)
         self.client.access_token = self.access_token
-
+        if self._http is None:
+            self._http = aiohttp.ClientSession()
         self.client.add_event_callback(
             self._message_callback,
             RoomMessageText,
