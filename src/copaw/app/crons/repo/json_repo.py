@@ -31,8 +31,11 @@ class JsonJobRepository(BaseJobRepository):
             return JobsFile(version=1, jobs=[])
 
         data = json.loads(self._path.read_text(encoding="utf-8"))
-        return JobsFile.model_validate(data)
-
+        try:
+            return JobsFile.model_validate(data)
+        except Exception as e:
+            print(e)
+            return JobsFile(version=1, jobs=[])
     async def save(self, jobs_file: JobsFile) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
 

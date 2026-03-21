@@ -8,7 +8,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-
+import markdown
+import pymdownx.tasklist
 import aiohttp
 from agentscope_runtime.engine.schemas.agent_schemas import (
     AgentRequest,
@@ -95,7 +96,7 @@ class MatrixChannel(BaseChannel):
             return mxc_url
         server, media_id = parts
         return (
-            f"{self.homeserver}/_matrix/media/v3/download/"
+            f"{self.homeserver}/_matrix/client/v1/media/download/"
             f"{server}/{media_id}"
             f"?access_token={self.access_token}"
         )
@@ -154,12 +155,16 @@ class MatrixChannel(BaseChannel):
         self,
         native_payload: Any,
     ) -> AgentRequest:
-        room_id = native_payload["room_id"]
-        sender = native_payload["sender"]
-        content_parts = native_payload.get("content_parts") or []
+        
+        payload = native_payload if isinstance(native_payload, dict) else {}
+        meta = dict(payload.get("meta") or {})
+     
+        room_id = meta.get("room_id") or ""
+        sender = meta.get("sender") or ""
+        content_parts = payload.get("content_parts") or []
 
         if not content_parts:
-            body = native_payload.get("body", "")
+            body = payload.get("body", "")
             content_parts = [TextContent(type=ContentType.TEXT, text=body)]
 
         session_id = self.resolve_session_id(room_id)
@@ -170,6 +175,10 @@ class MatrixChannel(BaseChannel):
             content_parts=content_parts,
             channel_meta={"room_id": room_id},
         )
+
+        if not payload['meta']['bot_mentioned']:
+            request.no_reply = True
+
         return request
 
     def get_to_handle_from_request(self, request: AgentRequest) -> str:
@@ -178,6 +187,18 @@ class MatrixChannel(BaseChannel):
             return session_id[len("matrix:") :]
         meta = getattr(request, "channel_meta", {}) or {}
         return meta.get("room_id", getattr(request, "user_id", ""))
+
+    def get_debounce_key(self, payload: Any) -> str:
+        """
+        Key for time debounce (same key = same conversation).
+        Delegates to ``resolve_session_id`` so every channel gets
+        session-scoped isolation automatically.
+        """
+        if isinstance(payload, dict):
+            sender_id = payload.get("sender_id") or ""
+            room_id = payload.get("room_id") or ""
+            return f"{self.channel}:{sender_id}:{room_id}"
+        return super().get_debounce_key(payload)
 
     async def _handle_event(
         self,
@@ -205,7 +226,7 @@ class MatrixChannel(BaseChannel):
 
         payload = {
             "room_id": room.room_id,
-            "sender": sender,
+            "sender_id": sender,
             "content_parts": content_parts,
             "meta": meta,
         }
@@ -229,7 +250,10 @@ class MatrixChannel(BaseChannel):
 
         # Detect @-mention for require_mention support
         localpart = self.user_id.split(":")[0].lstrip("@")
-        bot_mentioned = self.user_id in event.body or localpart in event.body
+        localpart = "@" + localpart
+        bot_mentioned = localpart in event.body
+
+        #bot_mentioned = self.user_id in event.body# or localpart in event.body
 
         content_parts = [TextContent(type=ContentType.TEXT, text=event.body)]
         await self._handle_event(
@@ -239,7 +263,6 @@ class MatrixChannel(BaseChannel):
             bot_mentioned=bot_mentioned,
         )
 
-    #test
     async def _media_callback(
         self,
         room: MatrixRoom,
@@ -501,12 +524,18 @@ class MatrixChannel(BaseChannel):
             to_handle,
             len(text),
         )
+        html_body = markdown.markdown(
+            text,
+            extensions=['fenced_code', 'tables', 'pymdownx.tasklist']
+        )
         resp = await self.client.room_send(
             room_id=to_handle,
             message_type="m.room.message",
             content={
                 "msgtype": "m.text",
                 "body": text,
+                "format": "org.matrix.custom.html",
+                "formatted_body": html_body
             },
         )
         if isinstance(resp, RoomSendError):
