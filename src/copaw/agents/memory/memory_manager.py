@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 # Try to import reme, log warning if it fails
 try:
     from reme.reme_light import ReMeLight
+    from reme.core.registry_factory import R 
+    R.file_watchers.register("")
 
     _REME_AVAILABLE = True
 

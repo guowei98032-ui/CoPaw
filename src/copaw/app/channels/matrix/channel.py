@@ -178,6 +178,35 @@ class MatrixChannel(BaseChannel):
         )
 
 
+    def clone(self, config) -> "BaseChannel":
+        """Clone a new channel instance with updated config, cloning
+        process and on_reply_sent from self.
+
+        Subclasses must implement from_config(process, config, on_reply_sent).
+
+        show_tool_details is global config (not in channel config), so we
+        preserve from self. filter_tool_messages and filter_thinking are
+        per-channel config, so we read from new config.
+        """
+        return self.__class__.from_config(
+            process=self._process,
+            config=config,
+            on_reply_sent=self._on_reply_sent,
+            show_tool_details=getattr(self, "_show_tool_details", True),
+            filter_tool_messages=getattr(
+                config,
+                "filter_tool_messages",
+                False,
+            ),
+            filter_thinking=getattr(
+                config,
+                "filter_thinking",
+                False,
+            ),
+            workspace_dir= self._workspace_dir,
+            workspace=self._workspace,
+        )
+    
     @classmethod
     def from_config(
         cls,
@@ -408,6 +437,7 @@ class MatrixChannel(BaseChannel):
 
         # Detect @-mention for require_mention support
         localpart = self.user_id.split(":")[0].lstrip("@")
+        send_user_id = event.sender.split(":")[0].lstrip("@")
         localpart = "@" + localpart
         bot_mentioned = localpart in event.body
         command,args = self.parse_command(event.body)
@@ -430,8 +460,9 @@ class MatrixChannel(BaseChannel):
                             await self._workspace.task_tracker.request_stop(chat.id)
             return 
         
+        send_text = f"\n{send_user_id}发送如下消息（注意：如果回复一定要加上 @{send_user_id} )：\n" + event.body
         #bot_mentioned = self.user_id in event.body# or localpart in event.body
-        content_parts = [TextContent(type=ContentType.TEXT, text=event.body)]
+        content_parts = [TextContent(type=ContentType.TEXT, text=send_text)]
         await self._handle_event(
             room,
             event.sender,
