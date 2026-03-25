@@ -339,7 +339,7 @@ class MatrixChannel(BaseChannel):
             )
 
             #self._workspace.task_tracker.attach_or_start(chat.id)
-            async for event in tracker.stream_from_queue(queue):
+            async for event in tracker.stream_from_queue(queue,chat_id):
                 obj = getattr(event, "object", None)
                 status = getattr(event, "status", None)
                 if obj == "message" and status == RunStatus.Completed:
