@@ -310,7 +310,7 @@ class MatrixChannel(BaseChannel):
             receiver_id = self.user_id.split(":")[0].lstrip("@")
             name = "New Chat"
 
-            existing = await self._repo.get_chat_by_id(
+            existing = await self._workspace.chat_manager.get_chat_by_id(
                 request.session_id,
                 request.user_id,
                 request.channel,
