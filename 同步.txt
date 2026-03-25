@@ -1,0 +1,30 @@
+# 1. 确认当前分支和状态
+git status
+git branch
+
+# 2. 查看待推送的提交（可选但推荐）
+git log origin/my-feature-branch..my-feature-branch --oneline
+
+# 3. 推送到远程
+git push origin my-feature-branch
+# 或（首次）
+git push -u origin my-feature-branch
+
+# 4. 验证推送结果
+git log -n 3  # 查看最新提交
+# 或去 GitHub 网页查看你的 fork 分支是否更新
+
+
+# 早上开始工作：同步最新上游 + 你的远程分支
+git fetch upstream
+git fetch origin
+git checkout my-feature-branch
+git merge upstream/main          # 或 git rebase upstream/main
+git pull origin my-feature-branch
+
+# 开发中：小步提交
+git add .
+git commit -m "feat: 实现某某功能"
+
+# 下班前：推送备份
+git push origin my-feature-branch

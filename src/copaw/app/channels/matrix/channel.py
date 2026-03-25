@@ -27,7 +27,10 @@ from agentscope_runtime.engine.schemas.agent_schemas import (
     VideoContent,
 )
 from nio import (
+    Api,
     AsyncClient,
+    InviteEvent,
+    JoinResponse,
     MatrixRoom,
     RoomMessageAudio,
     RoomMessageFile,
@@ -460,7 +463,7 @@ class MatrixChannel(BaseChannel):
                             await self._workspace.task_tracker.request_stop(chat.id)
             return 
         
-        send_text = f"\n{send_user_id}发送如下消息（注意：如果回复一定要加上 @{send_user_id} )：\n" + event.body
+        send_text = f"\n{send_user_id}发送如下消息)：\n" + event.body
         #bot_mentioned = self.user_id in event.body# or localpart in event.body
         content_parts = [TextContent(type=ContentType.TEXT, text=send_text)]
         await self._handle_event(
@@ -576,7 +579,7 @@ class MatrixChannel(BaseChannel):
         if not self.client:
             logger.error("Matrix client not initialized, cannot send media")
             return
-
+        self.client
         url = (
             getattr(part, "image_url", None)
             or getattr(part, "video_url", None)
@@ -679,6 +682,34 @@ class MatrixChannel(BaseChannel):
             if temp_path:
                 Path(temp_path).unlink(missing_ok=True)
 
+    async def _on_invite(self, room: MatrixRoom, event: InviteEvent):
+        """收到邀请时自动加入"""
+        room_id = room.room_id
+        print(f"📨 收到邀请：{room.name}")
+        print(f"   邀请人：{event.sender}")
+
+        try:
+            # # 自动加入房间
+            method, path = Api.join(self.access_token, room_id)
+            response = await self.client._send(JoinResponse, method, path,data="{}")
+            if response.transport_response.status != 200:
+                print(f"❌ 加入失败")
+            else:
+                print(f"✅ 已加入房间")
+                
+                # 可选：加入后发送欢迎消息
+                user_id = self.user_id.split(":")[0].lstrip("@")
+                await self.client.room_send(
+                    room_id=room_id,
+                    message_type="m.room.message",
+                    content={
+                        "msgtype": "m.text",
+                        "body": f"{user_id}已加入！有什么可以帮你的？"
+                    }
+                )
+        except Exception as e:
+            print(f"❌ 异常：{e}")
+            
     async def start(self) -> None:
         if (
             not self.enabled
@@ -695,6 +726,11 @@ class MatrixChannel(BaseChannel):
         self.client.access_token = self.access_token
         if self._http is None:
             self._http = aiohttp.ClientSession()
+        
+        self.client.add_event_callback(
+            self._on_invite,
+            InviteEvent)
+        
         self.client.add_event_callback(
             self._message_callback,
             RoomMessageText,
