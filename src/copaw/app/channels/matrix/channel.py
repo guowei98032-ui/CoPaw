@@ -310,15 +310,17 @@ class MatrixChannel(BaseChannel):
             receiver_id = self.user_id.split(":")[0].lstrip("@")
             name = "New Chat"
 
-            existing = await self._workspace.chat_manager.get_chat_by_id(
-                request.session_id,
-                request.user_id,
-                request.channel,
-            )
             chat_id = str(uuid.uuid4())
-            if existing:
-                chat_id = existing.id
-            
+            async with self._workspace.chat_manager._lock:
+                # Try to find existing by session_id
+                existing = await self._workspace.chat_manager._repo.get_chat_by_id(
+                    request.session_id,
+                    request.user_id,
+                    request.channel,
+                )
+                if existing:
+                    chat_id = existing.id
+                                
             spec = ChatSpec(
                 id=chat_id,
                 name=name,
