@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Matrix channel implementation using matrix-nio."""
 
+import argparse
 import asyncio
 import json
 import logging
@@ -41,7 +42,9 @@ from nio import (
     UploadError,
 )
 
+from copaw.app.channels.manager import ChannelManager
 from copaw.app.channels.schema import DEFAULT_CHANNEL
+from copaw.app.channels.teammanager import TeamManager
 from copaw.app.multi_agent_manager import MultiAgentManager
 from copaw.app.runner.models import ChatSpec
 from copaw.app.workspace.workspace import Workspace
@@ -259,6 +262,7 @@ class MatrixChannel(BaseChannel):
             content_parts = [TextContent(type=ContentType.TEXT, text=body)]
 
         session_id = self.resolve_session_id(room_id)
+        
         request = self.build_agent_request_from_user_content(
             channel_id=self.channel,
             sender_id=sender_id,
@@ -267,6 +271,8 @@ class MatrixChannel(BaseChannel):
             channel_meta={"room_id": room_id},
         )
 
+        request.meta = {"room_id": room_id}
+        
         if not payload['meta']['bot_mentioned']:
             request.no_reply = True
 
@@ -287,12 +293,7 @@ class MatrixChannel(BaseChannel):
         """
         if isinstance(payload, dict):
             room_id = payload.get("room_id") or ""
-            meta = payload.get("meta") or {}
-            is_command = meta.get("is_stop_command") or False
-            if is_command:
-                return f"{str(uuid.uuid4())}"
-            else:
-                return f"{self.channel}:{self.user_id}:{room_id}"
+            return f"{self.channel}:{self.user_id}:{room_id}"
         return super().get_debounce_key(payload)
 
     async def _run_process_loop(
@@ -404,35 +405,35 @@ class MatrixChannel(BaseChannel):
         if self._enqueue:
             self._enqueue(payload)
 
-    def parse_command(self,input_str: str) -> Tuple[str, List[str]]:
-        """
-        解析命令输入，处理各种空格情况
-        返回：(命令名，参数列表)
-        """
+    def parse_command(self,input_str: str):
+        input_str = input_str.strip()
         if not input_str.startswith("/"):
-             return "", []
-                                
-        # 1. 去除首尾空格和 '/' 前缀
-        content = input_str.strip().lstrip('/')
-        
-        # 2. 正则匹配：命令 + 任意空格 + 参数
-        # \w+ 匹配命令名，\s* 匹配任意空格，.+ 匹配参数部分
-        match = re.match(r'^(\w+)\s*(.*)$', content)
-        
-        if not match:
             return "", []
         
-        command = match.group(1).lower()  # 命令转小写
-        args_str = match.group(2).strip()
+        parts = input_str.split()
+        if not parts:
+            return "", []
         
-        # 3. 解析参数列表：按逗号分割，去除每个参数的空格
-        if not args_str:
-            return command, []
+        command = parts[0]
+        args_str = ' '.join(parts[1:]) if len(parts) > 1 else ""
+
+        # 2. 定义正则模式
+        # --agents 后接空格或=，然后是非空格内容
+        # --prompt 后接空格或=，然后是直到行尾或下一个 -- 开头的内容
+        patterns = {
+            'agents': r'--agents[=\s]+([^\s]+)',
+            'prompt': r'--prompt[=\s]+(.+?)(?=\s--|$)'
+        }
         
-        # 按逗号分割，每个参数去除首尾空格，过滤空字符串
-        args = [arg.strip() for arg in args_str.split(',') if arg.strip()]
+        # 3. 存储结果：值 + 位置
+        result = {}
         
-        return command, args
+        for key, pattern in patterns.items():
+            match = re.search(pattern, args_str)
+            if match:
+                value = match.group(1).strip()
+                result[key] = value
+        return command, result                
 
     async def _message_callback(
         self,
@@ -452,13 +453,15 @@ class MatrixChannel(BaseChannel):
         # Detect @-mention for require_mention support
         localpart = self.user_id.split(":")[0].lstrip("@")
         send_user_id = event.sender.split(":")[0].lstrip("@")
+        my_user_id = localpart
         localpart = "@" + localpart
         bot_mentioned = localpart in event.body
         command,args = self.parse_command(event.body)
-        if command == "stop":
-            #user_id: Optional[str] = None,
+        if command == "/stop":
             manager :MultiAgentManager = getattr(self._workspace.runner, "_manager", None)
             agent_ids = manager.list_loaded_agents()
+            agents = args.get("agents","")
+            receiver_ids = [id.strip() for id in agents.split(",") if id.strip()]
             for agent_id in agent_ids:
                 agent_workspace = await manager.get_agent(agent_id)
                 chats = await agent_workspace.chat_manager.list_chats(channel=self.channel)
@@ -467,12 +470,27 @@ class MatrixChannel(BaseChannel):
                     if room_id != room.room_id:
                         continue
                     receiver_id = chat.meta.get("receiver_id","")
-                    if len(args) == 0:
+                    if len(receiver_ids) == 0:
                         await self._workspace.task_tracker.request_stop(chat.id)
                     else:
-                        if receiver_id in args:
+                        if receiver_id in receiver_ids:
                             await self._workspace.task_tracker.request_stop(chat.id)
             return 
+        elif command == "/team":
+            cm:TeamManager = self._workspace._service_manager.services["team_manager"]
+            agents = args.get("agents","")
+            prompt = args.get("prompt","");
+            if prompt is None or len(prompt) == 0:
+                pass
+            else:
+                receiver_ids = [id.strip() for id in agents.split(",") if id.strip()]
+                if len(receiver_ids) == 0:
+                    await cm.upsert_team_sys_prompt(room.room_id,None,prompt)
+                else:                    
+                    for receiver_id in receiver_ids:
+                        if receiver_id == my_user_id:
+                            await cm.upsert_team_sys_prompt(room.room_id,receiver_id,prompt)
+                return
         
         send_text = f"\n{send_user_id}发送如下消息)：\n" + event.body
         #bot_mentioned = self.user_id in event.body# or localpart in event.body
@@ -775,6 +793,8 @@ class MatrixChannel(BaseChannel):
 
             while True:
                 try:
+                    await self.client.set_presence("online")
+
                     # ✅ 1. 执行单次同步（而非 sync_forever）
                     response = await self.client.sync(timeout=30000, since=since)
                     
@@ -812,6 +832,24 @@ class MatrixChannel(BaseChannel):
 
         if not text:
             return
+        
+        # room_id_for_session_id = None
+        # if meta is not None:
+        #     session_id = meta.get("session_id",None)
+        #     if session_id is not None:
+        #         manager :MultiAgentManager = getattr(self._workspace.runner, "_manager", None)
+        #         agent_ids = manager.list_loaded_agents()
+        #         for agent_id in agent_ids:
+        #             agent_workspace = await manager.get_agent(agent_id)
+        #             chats = await agent_workspace.chat_manager.list_chats(channel=self.channel)
+        #             for chat in chats:       
+        #                 if chat.meta is not None:    
+        #                     sid = chat.meta.get("session_id","")
+        #                     if sid == session_id:         
+        #                         room_id_for_session_id = chat.meta.get("room_id",None)
+        #                         break
+        #             if room_id_for_session_id is not None:
+        #                 break
 
         logger.info(
             "Matrix sending to room=%s text_len=%d",
@@ -822,6 +860,10 @@ class MatrixChannel(BaseChannel):
             text,
             extensions=['fenced_code', 'tables', 'pymdownx.tasklist']
         )
+
+        # if room_id_for_session_id is not None:
+        #     to_handle = room_id_for_session_id
+
         resp = await self.client.room_send(
             room_id=to_handle,
             message_type="m.room.message",
@@ -832,5 +874,6 @@ class MatrixChannel(BaseChannel):
                 "formatted_body": html_body
             },
         )
+
         if isinstance(resp, RoomSendError):
             logger.error("Matrix room_send failed: %s", resp)

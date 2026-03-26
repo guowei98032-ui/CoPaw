@@ -21,6 +21,7 @@ from .service_factories import (
     create_channel_service,
     create_agent_config_watcher,
     create_mcp_config_watcher,
+    create_team_service,
 )
 from ..runner import AgentRunner
 from ..runner.task_tracker import TaskTracker
@@ -275,6 +276,15 @@ class Workspace:
                 concurrent_init=False,
             ),
         )
+        sm.register( ServiceDescriptor(
+                name="team_manager",
+                service_class=None,
+                post_init=create_team_service,
+                start_method="start",
+                stop_method="stop",
+                priority=51,
+                concurrent_init=False,
+            ),)
 
     async def set_reusable_components(self, components: dict) -> None:
         """Set components to reuse from previous instance.

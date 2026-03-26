@@ -9,6 +9,8 @@ improve testability and code organization.
 from typing import TYPE_CHECKING
 import logging
 
+from copaw.app.channels.teammanager import TeamManager
+
 if TYPE_CHECKING:
     from .workspace import Workspace
 
@@ -162,3 +164,10 @@ async def create_mcp_config_watcher(ws: "Workspace", _):
     ws._service_manager.services["mcp_config_watcher"] = watcher
     return watcher
     # pylint: enable=protected-access
+
+async def create_team_service(ws: "Workspace", _):
+    cm = TeamManager(ws)
+    ws._service_manager.services["team_manager"] = cm
+    return cm
+    # pylint: enable=protected-access
+

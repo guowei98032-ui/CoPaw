@@ -19,6 +19,7 @@ from agentscope.tool import Toolkit
 from anyio import ClosedResourceError
 from pydantic import BaseModel
 
+
 from .command_handler import CommandHandler
 from .hooks import BootstrapHook, MemoryCompactionHook
 from .model_factory import create_model_and_formatter
@@ -121,7 +122,7 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
         self._mcp_clients = mcp_clients or []
         self._namesake_strategy = namesake_strategy
         self._workspace_dir = workspace_dir
-
+        
         # Extract configuration from agent_config
         running_config = agent_config.running
         self._language = agent_config.language
@@ -308,6 +309,7 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             if self._request_context
             else None
         )
+        self._request_context.get("")
 
         # Check if heartbeat is enabled in agent config
         heartbeat_enabled = False

@@ -357,7 +357,21 @@ class AgentRunner(Runner):
             # Rebuild system prompt so it always reflects the latest
             # AGENTS.md / SOUL.md / PROFILE.md, not the stale one saved
             # in the session state.
+            meta = getattr(request,"meta",{})
+            room_id = meta.get("room_id",None)
+            team_sys_prompt = None
+            if room_id is not None:
+                manager = getattr(self, "_manager", None)
+                if manager is not None:
+                    ws = await manager.get_agent(self.agent_id)
+                    tm = ws._service_manager.services.get("team_manager",None)
+                    if tm is not None:
+                        my_user_id = user_id.split(":")[0].lstrip("@")
+                        team_sys_prompt = await tm.get_team_sys_prompt(room_id,my_user_id)
+
             agent.rebuild_sys_prompt()
+            if team_sys_prompt is not None:
+                agent._sys_prompt = team_sys_prompt + "\n" + agent._sys_prompt
 
             no_reply = getattr(request,"no_reply",False)
             if no_reply:
