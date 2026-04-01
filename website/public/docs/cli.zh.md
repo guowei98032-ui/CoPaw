@@ -23,14 +23,10 @@ copaw init --force      # 覆盖已有配置文件
 
 **交互流程（按顺序）：**
 
-1. **心跳** —— 间隔（如 `30m`）、目标（`main` / `last`）、可选活跃时间段。
-2. **工具详情** —— 是否在频道消息中显示工具调用细节。
-3. **语言** —— Agent 人设文件（SOUL.md 等）使用 `zh` / `en` / `ru`。
-4. **频道** —— 可选配置 iMessage / Discord / DingTalk / Feishu / QQ / Console。
-5. **LLM 提供商** —— 选择提供商、输入 API Key、选择模型（**必选**）。
-6. **技能** —— 全部启用 / 不启用 / 自定义选择。
-7. **环境变量** —— 可选添加工具所需的键值对。
-8. **HEARTBEAT.md** —— 在默认编辑器中编辑心跳检查清单。
+1. **默认工作区初始化** —— 自动创建默认工作区及配置文件。
+2. **LLM 提供商** —— 选择提供商、输入 API Key、选择模型（**必选**）。
+3. **环境变量** —— 可选添加工具所需的键值对。
+4. **HEARTBEAT.md** —— 在默认编辑器中编辑心跳检查清单。
 
 ### copaw app
 
@@ -38,9 +34,7 @@ copaw init --force      # 覆盖已有配置文件
 
 ```bash
 copaw app                             # 默认 127.0.0.1:8088
-copaw app --host 0.0.0.0 --port 9090 # 自定义地址
 copaw app --reload                    # 代码改动自动重载（开发用）
-copaw app --workers 4                 # 多 worker 模式
 copaw app --log-level debug           # 详细日志
 ```
 
@@ -49,8 +43,10 @@ copaw app --log-level debug           # 详细日志
 | `--host`      | `127.0.0.1` | 绑定地址                                                      |
 | `--port`      | `8088`      | 绑定端口                                                      |
 | `--reload`    | 关闭        | 文件变动时自动重载（仅开发用）                                |
-| `--workers`   | `1`         | Worker 进程数                                                 |
 | `--log-level` | `info`      | `critical` / `error` / `warning` / `info` / `debug` / `trace` |
+| `--workers`   | —           | **[已废弃]** 将被忽略，CoPaw 始终使用 1 个 worker             |
+
+> **说明：** `--workers` 选项因稳定性原因已废弃。CoPaw 被设计为单 worker 进程运行。多 worker 模式会导致内存状态管理和 WebSocket 连接出现问题。此选项将在未来版本中移除。
 
 ### 控制台
 
@@ -101,12 +97,9 @@ copaw daemon logs -n 50
 | `copaw models config`                  | 完整交互式配置：API Key → 选择模型     |
 | `copaw models config-key [provider]`   | 单独配置某个提供商的 API Key           |
 | `copaw models set-llm`                 | 只切换活跃模型（不改 API Key）         |
-| `copaw models download <repo_id>`      | 下载本地模型（llama.cpp / MLX）        |
 | `copaw models local`                   | 查看已下载的本地模型                   |
+| `copaw models download <repo_id>`      | 下载一个本地模型（llama.cpp）          |
 | `copaw models remove-local <model_id>` | 删除已下载的本地模型                   |
-| `copaw models ollama-pull <model>`     | 下载 Ollama 模型                       |
-| `copaw models ollama-list`             | 查看 Ollama 模型                       |
-| `copaw models ollama-remove <model>`   | 删除 Ollama 模型                       |
 
 ```bash
 copaw models list                    # 看当前状态
@@ -119,33 +112,28 @@ copaw models set-llm                 # 只切换模型
 
 #### 本地模型
 
-CoPaw 也支持通过 llama.cpp 或 MLX 在本地运行模型——无需 API Key。
-先安装后端：`pip install 'copaw[llamacpp]'` 或 `pip install 'copaw[mlx]'`。
+CoPaw 也支持通过 llama.cpp，Ollama 或 LM Studio 在本地运行模型——无需 API Key。
+但在此之前需要先下载对应的应用，例如 [Ollama](https://ollama.com/download) 或 [LM Studio](https://lmstudio.ai/download)。
 
 ```bash
 # 下载模型（自动选择 Q4_K_M GGUF）
 copaw models download Qwen/Qwen3-4B-GGUF
-
-# 下载 MLX 模型
-copaw models download Qwen/Qwen3-4B --backend mlx
 
 # 从 ModelScope 下载
 copaw models download Qwen/Qwen2-0.5B-Instruct-GGUF --source modelscope
 
 # 查看已下载模型
 copaw models local
-copaw models local --backend mlx
 
 # 删除已下载模型
 copaw models remove-local <model_id>
 copaw models remove-local <model_id> --yes   # 跳过确认
 ```
 
-| 选项        | 简写 | 默认值        | 说明                                           |
-| ----------- | ---- | ------------- | ---------------------------------------------- |
-| `--backend` | `-b` | `llamacpp`    | 目标后端（`llamacpp` 或 `mlx`）                |
-| `--source`  | `-s` | `huggingface` | 下载源（`huggingface` 或 `modelscope`）        |
-| `--file`    | `-f` | _（自动）_    | 指定文件名。省略时自动选择（GGUF 优先 Q4_K_M） |
+| 选项       | 简写 | 默认值        | 说明                                           |
+| ---------- | ---- | ------------- | ---------------------------------------------- |
+| `--source` | `-s` | `huggingface` | 下载源（`huggingface` 或 `modelscope`）        |
+| `--file`   | `-f` | _（自动）_    | 指定文件名。省略时自动选择（GGUF 优先 Q4_K_M） |
 
 #### Ollama 模型
 
@@ -155,15 +143,14 @@ CoPaw 集成 Ollama 以在本地运行模型。模型从 Ollama 守护进程动�
 
 ```bash
 # 下载 Ollama 模型
-copaw models ollama-pull mistral:7b
-copaw models ollama-pull qwen2.5:3b
+ollama pull mistral:7b
+ollama pull qwen2.5:3b
 
 # 查看 Ollama 模型
-copaw models ollama-list
+ollama list
 
 # 删除 Ollama 模型
-copaw models ollama-remove mistral:7b
-copaw models ollama-remove qwen2.5:3b --yes   # 跳过确认
+ollama rm mistral:7b
 
 # 在配置流程中使用（自动检测 Ollama 模型）
 copaw models config           # 选择 Ollama → 从模型列表中选择
@@ -173,7 +160,7 @@ copaw models set-llm          # 切换到其他 Ollama 模型
 **与本地模型的主要区别：**
 
 - 模型来自 Ollama 守护进程（不由 CoPaw 下载）
-- 使用 `ollama-pull` / `ollama-remove` 而非 `download` / `remove-local`
+- 使用 `ollama` 命令管理模型（非 `copaw models`）
 - 通过 Ollama CLI 或 CoPaw 添加/删除模型时，模型列表自动更新
 
 > **注意：** API Key 的有效性需要用户自行保证，CoPaw 不会验证。
@@ -248,9 +235,20 @@ copaw channels config --agent-id abc123 # 交互式配置特定智能体
 
 > 各平台凭据的获取步骤，请看 [频道配置](./channels)。
 
-#### 向频道发送消息
+#### 向频道发送消息（主动通知）
+
+> 对应技能：**Channel Message（频道消息推送）**
 
 使用 `copaw channels send` 主动向用户/会话推送消息，支持所有已配置的频道。这是**单向发送** —— 不会返回回复。
+
+智能体通过启用 **channel_message** 技能，可以在需要时自动使用此命令向用户发送主动通知。
+
+**典型使用场景：**
+
+- 任务完成后主动通知用户
+- 定时提醒、告警、状态更新
+- 将异步处理结果推送回原会话
+- 用户明确要求"处理完后通知我"
 
 ```bash
 # 第一步：查询可用会话
@@ -277,7 +275,12 @@ copaw channels send \
 
 - 发送前必须先用 `copaw chats list` 查询 —— 不要猜测 `target-user` 或 `target-session`
 - 如果有多个会话，优先使用最近更新的
-- 这仅用于主动通知；智能体间通信请用 `copaw agents chat`
+- 这仅用于主动通知；智能体间通信请用 `copaw agents chat`（见下方"智能体"章节）
+
+**与 `copaw agents chat` 的区别：**
+
+- `copaw channels send`：智能体向用户/频道推送，单向，无回复
+- `copaw agents chat`：智能体间通信，双向，有回复
 
 ---
 
@@ -286,6 +289,10 @@ copaw channels send \
 管理智能体并支持智能体间通信。
 
 ### copaw agents
+
+> 对应技能：**Multi-Agent Collaboration（多智能体协作）**
+
+智能体通过启用 **multi_agent_collaboration** 技能，可以在需要时自动使用 `copaw agents chat` 与其他智能体协作。
 
 **别名：** 可以用 `copaw agent`（单数）作为 `copaw agents` 的简写。
 
@@ -299,7 +306,7 @@ copaw channels send \
 copaw agents list
 copaw agent list  # 单数别名效果相同
 
-# 与另一个智能体对话（单次）
+# 与另一个智能体对话（实时模式，单次）
 copaw agents chat \
   --agent-id my_bot \
   --to-agent helper_bot \
@@ -312,7 +319,20 @@ copaw agents chat \
   --session-id collab_session_001 \
   --text "继续上一个问题"
 
-# 流式模式（逐步返回）
+# 复杂任务（后台模式）
+copaw agents chat --background \
+  --agent-id my_bot \
+  --to-agent data_analyst \
+  --text "分析 /data/logs/2026-03-26.log 并生成详细报告"
+# 返回 [TASK_ID: xxx] [SESSION: xxx]
+
+# 查询后台任务状态（查询时 --to-agent 为可选）
+copaw agents chat --background \
+  --task-id <task_id>
+# 状态流程：submitted → pending → running → finished
+# finished 时结果显示：completed（✅）或 failed（❌）
+
+# 流式模式（逐步返回，仅实时模式支持）
 copaw agents chat \
   --agent-id my_bot \
   --to-agent helper_bot \
@@ -320,19 +340,46 @@ copaw agents chat \
   --mode stream
 ```
 
-**必填参数：**
+**必填参数（实时模式）：**
 
 - `--from-agent`（别名：`--agent-id`）：你的智能体 ID（发送方）
 - `--to-agent`：目标智能体 ID（接收方）
 - `--text`：消息内容
 
+**后台任务参数（新增）：**
+
+- `--background`：后台任务模式
+- `--task-id`：查询后台任务状态（与 `--background` 一起使用）
+
 **可选参数：**
 
 - `--session-id`：多轮对话的会话 ID（省略时自动生成）
 - `--mode`：响应模式 —— `final`（默认，完整响应）或 `stream`（逐步返回）
+  - **注意**：`--background` 与 `--mode stream` 互斥
 - `--base-url`：覆盖 API 地址
+- `--timeout`：超时时间（秒，默认 300）
+- `--json-output`：输出完整 JSON 而非纯文本
 
-**说明：** `--from-agent` 和 `--agent-id` 等价，可互换使用。
+**后台模式说明：**
+
+当任务复杂（如数据分析、批量处理、报告生成）时，使用 `--background` 可以避免阻塞当前智能体。提交后返回 `task_id`，稍后可以查询任务状态和结果。
+
+**适用场景**：
+
+- 数据分析和统计
+- 批量文件处理
+- 生成详细报告
+- 调用慢速外部 API
+- 不确定执行时间的复杂任务
+
+**任务状态流程**：
+
+- `submitted`：任务已接受，等待开始
+- `pending`：排队等待执行
+- `running`：正在执行
+- `finished`：已完成（结果为 `completed` 成功或 `failed` 失败）
+
+**说明：** `--from-agent` 和 `--agent-id` 等价，可互换使用。查询任务状态时只需 `--task-id`（`--to-agent` 为可选）。
 
 **与 `copaw channels send` 的区别：**
 
@@ -538,24 +585,24 @@ copaw --host 0.0.0.0 --port 9090 cron list
 | `COPAW_WORKING_DIR` | 覆盖工作目录路径 |
 | `COPAW_CONFIG_FILE` | 覆盖配置文件路径 |
 
-详见 [配置与工作目录](./config) 和 [多智能体工作区](./multi-agent)。
+详见 [配置与工作目录](./config) 和 [多智能体](./multi-agent)。
 
 ---
 
 ## 命令总览
 
-| 命令             | 子命令                                                                                                                                 |  需要服务运行？   |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | :---------------: |
-| `copaw init`     | —                                                                                                                                      |        否         |
-| `copaw app`      | —                                                                                                                                      | —（启动服务本身） |
-| `copaw models`   | `list` · `config` · `config-key` · `set-llm` · `download` · `local` · `remove-local` · `ollama-pull` · `ollama-list` · `ollama-remove` |        否         |
-| `copaw env`      | `list` · `set` · `delete`                                                                                                              |        否         |
-| `copaw channels` | `list` · `send` · `install` · `add` · `remove` · `config`                                                                              |      **是**       |
-| `copaw agents`   | `list` · `chat`                                                                                                                        |      **是**       |
-| `copaw cron`     | `list` · `get` · `state` · `create` · `delete` · `pause` · `resume` · `run`                                                            |      **是**       |
-| `copaw chats`    | `list` · `get` · `create` · `update` · `delete`                                                                                        |      **是**       |
-| `copaw skills`   | `list` · `config`                                                                                                                      |        否         |
-| `copaw clean`    | —                                                                                                                                      |        否         |
+| 命令             | 子命令                                                                               |  需要服务运行？   |
+| ---------------- | ------------------------------------------------------------------------------------ | :---------------: |
+| `copaw init`     | —                                                                                    |        否         |
+| `copaw app`      | —                                                                                    | —（启动服务本身） |
+| `copaw models`   | `list` · `config` · `config-key` · `set-llm` · `download` · `local` · `remove-local` |        否         |
+| `copaw env`      | `list` · `set` · `delete`                                                            |        否         |
+| `copaw channels` | `list` · `send` · `install` · `add` · `remove` · `config`                            |      **是**       |
+| `copaw agents`   | `list` · `chat`                                                                      |      **是**       |
+| `copaw cron`     | `list` · `get` · `state` · `create` · `delete` · `pause` · `resume` · `run`          |      **是**       |
+| `copaw chats`    | `list` · `get` · `create` · `update` · `delete`                                      |      **是**       |
+| `copaw skills`   | `list` · `config`                                                                    |        否         |
+| `copaw clean`    | —                                                                                    |        否         |
 
 ---
 
@@ -567,4 +614,4 @@ copaw --host 0.0.0.0 --port 9090 cron list
 - [心跳](./heartbeat) —— 定时自检/摘要
 - [技能](./skills) —— 内置技能与自定义技能
 - [配置与工作目录](./config) —— 工作目录与 config.json
-- [多智能体工作区](./multi-agent) —— 多智能体配置与管理
+- [多智能体](./multi-agent) —— 多智能体配置、管理与协作
