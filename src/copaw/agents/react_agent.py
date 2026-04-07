@@ -51,6 +51,13 @@ from .tools import (
     view_video,
     write_file,
     create_memory_search_tool,
+    task_list,
+    task_create,
+    task_update,
+    task_claim,
+    mailbox_read,
+    mailbox_send,
+    mailbox_broadcast,
 )
 from .utils import process_file_and_media_blocks_in_message
 from ..constant import (
@@ -268,6 +275,14 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             "get_current_time": get_current_time,
             "set_user_timezone": set_user_timezone,
             "get_token_usage": get_token_usage,
+            # ChatRoom tools
+            "task_list": task_list,
+            "task_create": task_create,
+            "task_update": task_update,
+            "task_claim": task_claim,
+            "mailbox_read": mailbox_read,
+            "mailbox_send": mailbox_send,
+            "mailbox_broadcast": mailbox_broadcast,
         }
 
         multimodal = get_active_model_supports_multimodal()

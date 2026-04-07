@@ -85,6 +85,8 @@ class ConsoleChannel(BaseChannel):
         filter_thinking: bool = False,
         workspace_dir: Optional[Union[str, Path]] = None,
         media_dir: Optional[str] = None,
+        workspace: Optional[Any] = None,
+        **_kwargs: Any,
     ):
         """Initialize ConsoleChannel.
 
@@ -99,6 +101,7 @@ class ConsoleChannel(BaseChannel):
             workspace_dir: Agent workspace directory; used to resolve uploaded
                 file names (media_dir = workspace_dir / "media").
             media_dir: Agent workspace directory for resolving uploads.
+            workspace: Workspace instance for accessing agent config.
         """
         super().__init__(
             process,
@@ -121,6 +124,9 @@ class ConsoleChannel(BaseChannel):
         else:
             self._media_dir = DEFAULT_MEDIA_DIR
         self._media_dir.mkdir(parents=True, exist_ok=True)
+
+        # Store workspace reference (set via set_workspace or passed here)
+        self._workspace = workspace
 
         # Windows stdout encoding fix
         if sys.platform == "win32":
@@ -162,6 +168,7 @@ class ConsoleChannel(BaseChannel):
         filter_tool_messages: bool = False,
         filter_thinking: bool = False,
         workspace_dir: Optional[Union[str, Path]] = None,
+        workspace: Optional[Any] = None,
     ) -> "ConsoleChannel":
         """Create ConsoleChannel from config.
 
@@ -173,6 +180,7 @@ class ConsoleChannel(BaseChannel):
             filter_tool_messages: Whether to filter out tool messages.
             filter_thinking: Whether to filter thinking/reasoning blocks.
             workspace_dir: Agent workspace directory for resolving uploads.
+            workspace: Workspace instance for accessing agent config.
 
         Returns:
             Configured ConsoleChannel instance.
@@ -187,6 +195,7 @@ class ConsoleChannel(BaseChannel):
             filter_thinking=filter_thinking,
             workspace_dir=workspace_dir,
             media_dir=config.media_dir or "",
+            workspace=workspace,
         )
 
     def resolve_session_id(
@@ -211,38 +220,44 @@ class ConsoleChannel(BaseChannel):
             return content_parts
 
         def resolve_one(part: Any) -> Optional[OutgoingContentPart]:
-            content_type = getattr(part, "type", None)
-            if content_type == ContentType.IMAGE:
-                url = getattr(part, "image_url", None)
+            # Check dict format FIRST (getattr on dict returns <class 'type'>)
+            if isinstance(part, dict):
+                content_type = part.get("type")
+            else:
+                content_type = getattr(part, "type", None)
+            if content_type == ContentType.TEXT:
+                text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+                return TextContent(type=ContentType.TEXT, text=text)
+            elif content_type == ContentType.IMAGE:
+                url = part.get("image_url") if isinstance(part, dict) else getattr(part, "image_url", None)
                 if url:
                     return ImageContent(
                         type=ContentType.IMAGE,
                         image_url=url,
                     )
             elif content_type == ContentType.VIDEO:
-                url = getattr(part, "video_url", None)
+                url = part.get("video_url") if isinstance(part, dict) else getattr(part, "video_url", None)
                 if url:
                     return VideoContent(
                         type=ContentType.VIDEO,
                         video_url=url,
                     )
             elif content_type == ContentType.AUDIO:
-                url = getattr(part, "data", None)
+                url = part.get("data") if isinstance(part, dict) else getattr(part, "data", None)
                 if url:
                     return AudioContent(
                         type=ContentType.AUDIO,
                         data=url,
                     )
             elif content_type == ContentType.FILE:
-                url = getattr(part, "file_url", None)
+                url = part.get("file_url") if isinstance(part, dict) else getattr(part, "file_url", None)
                 if url:
+                    filename = part.get("filename") if isinstance(part, dict) else getattr(part, "filename", None)
                     return FileContent(
                         type=ContentType.FILE,
-                        filename=getattr(part, "filename", None) or url,
+                        filename=filename or url,
                         file_url=url,
                     )
-            elif content_type == ContentType.TEXT:
-                return TextContent(type=ContentType.TEXT, text=part.text)
             return part
 
         input_content_parts = []
@@ -350,6 +365,13 @@ class ConsoleChannel(BaseChannel):
         try:
             send_meta = getattr(request, "channel_meta", None) or {}
             send_meta.setdefault("bot_prefix", self.bot_prefix)
+
+            # Add agent_name from workspace config if available
+            if self._workspace:
+                agent_name = getattr(self._workspace.config, "name", None)
+                if agent_name:
+                    send_meta["agent_name"] = agent_name
+
             last_response = None
             event_count = 0
 
@@ -397,6 +419,21 @@ class ConsoleChannel(BaseChannel):
 
                     parts = self._message_to_content_parts(event)
                     self._print_parts(parts, ev_type)
+
+                    # Forward to Matrix if configured - only forward MessageType.MESSAGE
+                    # (not tool calls, reasoning, plugin_call_output, etc.)
+                    # Check the actual message type from the event
+                    msg_type = getattr(event, "type", None)
+                    logger.debug(
+                        "Console: message event type=%s msg_type=%s, parts_len=%d",
+                        ev_type,
+                        msg_type,
+                        len(parts),
+                    )
+                    if msg_type == MessageType.MESSAGE:
+                        await self._forward_to_matrix_if_configured(parts, send_meta)
+                    else:
+                        logger.debug("Console: skipping Matrix forward, msg_type=%s", msg_type)
 
                 elif obj == "response":
                     last_response = event
@@ -549,6 +586,7 @@ class ConsoleChannel(BaseChannel):
     ) -> None:
         """
         Send content parts — prints to stdout and pushes to frontend store.
+        Note: Matrix forwarding is handled in stream_one for message-type events only.
         """
         self._print_parts(parts)
         sid = (meta or {}).get("session_id")
@@ -558,6 +596,85 @@ class ConsoleChannel(BaseChannel):
                 await push_store_append(sid, body.strip())
 
     # ── lifecycle ───────────────────────────────────────────────────
+
+    async def _forward_to_matrix_if_configured(
+        self,
+        parts: List[OutgoingContentPart],
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Forward message to Matrix room if matrix_room_id is provided.
+
+        This enables Console chat messages to be forwarded to associated
+        Matrix rooms for multi-agent chatrooms.
+
+        Args:
+            parts: Content parts to forward
+            meta: Metadata containing matrix_room_id, agent_name, etc.
+        """
+        if not meta:
+            return
+
+        # Skip if this is already a forwarded message (prevent loops)
+        if meta.get("forwarded"):
+            return
+
+        matrix_room_id = meta.get("matrix_room_id")
+        if not matrix_room_id:
+            return
+
+        # Get agent_name from meta (set by stream_one from workspace config)
+        agent_name = meta.get("agent_name")
+
+        # Get Matrix channel from workspace
+        if not self._workspace:
+            logger.warning(
+                "Console: no workspace, cannot forward to Matrix room %s",
+                matrix_room_id,
+            )
+            return
+
+        channel_manager = getattr(self._workspace, "channel_manager", None)
+        if not channel_manager:
+            logger.warning(
+                "Console: no channel_manager, cannot forward to Matrix room %s",
+                matrix_room_id,
+            )
+            return
+
+        # Get Matrix channel
+        matrix_channel = None
+        for ch in channel_manager.channels:
+            if ch.channel == "matrix" and getattr(ch, "enabled", False):
+                matrix_channel = ch
+                break
+
+        if not matrix_channel:
+            logger.warning(
+                "Console: no enabled Matrix channel (channels: %s), skipping forward to %s",
+                [ch.channel for ch in channel_manager.channels],
+                matrix_room_id,
+            )
+            return
+
+        # Forward the message
+        try:
+            success = await matrix_channel.forward_to_room(
+                room_id=matrix_room_id,
+                parts=parts,
+                from_agent_name=agent_name,
+            )
+            if success:
+                logger.info(
+                    "Console: forwarded message to Matrix room %s from agent %s",
+                    matrix_room_id,
+                    agent_name,
+                )
+        except Exception as e:
+            logger.warning(
+                "Console: failed to forward to Matrix room %s: %s",
+                matrix_room_id,
+                e,
+            )
 
     async def start(self) -> None:
         if not self.enabled:

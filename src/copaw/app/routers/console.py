@@ -7,12 +7,11 @@ import logging
 import re
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator, Union
+from typing import AsyncGenerator
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from starlette.responses import StreamingResponse
 
-from agentscope_runtime.engine.schemas.agent_schemas import AgentRequest
 from ..agent_context import get_agent_for_request
 
 
@@ -29,38 +28,40 @@ def _safe_filename(name: str) -> str:
     return re.sub(r"[^\w.\-]", "_", base)[:200] or "file"
 
 
-def _extract_session_and_payload(request_data: Union[AgentRequest, dict]):
+def _extract_session_and_payload(request_data: dict):
     """Extract run_key (ChatSpec.id), session_id, and native payload.
 
     run_key must be ChatSpec.id (chat_id) so it matches list_chats/get_chat.
     """
-    if isinstance(request_data, AgentRequest):
-        channel_id = request_data.channel or "console"
-        sender_id = request_data.user_id or "default"
-        session_id = request_data.session_id or "default"
-        content_parts = (
-            list(request_data.input[0].content) if request_data.input else []
-        )
-    else:
-        channel_id = request_data.get("channel", "console")
-        sender_id = request_data.get("user_id", "default")
-        session_id = request_data.get("session_id", "default")
-        input_data = request_data.get("input", [])
-        content_parts = []
-        for content_part in input_data:
-            if hasattr(content_part, "content"):
-                content_parts.extend(list(content_part.content or []))
-            elif isinstance(content_part, dict) and "content" in content_part:
-                content_parts.extend(content_part["content"] or [])
+    # Extract meta from request (contains room_id, matrix_room_id, etc.)
+    request_meta = request_data.get("meta", {}) or {}
+
+    channel_id = request_data.get("channel", "console")
+    sender_id = request_data.get("user_id", "default")
+    session_id = request_data.get("session_id", "default")
+    input_data = request_data.get("input", [])
+    content_parts = []
+    for content_part in input_data:
+        if hasattr(content_part, "content"):
+            content_parts.extend(list(content_part.content or []))
+        elif isinstance(content_part, dict) and "content" in content_part:
+            content_parts.extend(content_part["content"] or [])
+
+    # Debug: log extracted content_parts
+    print(f"[DEBUG] _extract_session_and_payload: content_parts={content_parts}", flush=True)
+
+    # Merge base meta with request meta (request meta takes precedence)
+    meta = {
+        "session_id": session_id,
+        "user_id": sender_id,
+        **request_meta,  # Include room_id, matrix_room_id, etc.
+    }
 
     native_payload = {
         "channel_id": channel_id,
         "sender_id": sender_id,
         "content_parts": content_parts,
-        "meta": {
-            "session_id": session_id,
-            "user_id": sender_id,
-        },
+        "meta": meta,
     }
     return native_payload
 
@@ -73,13 +74,18 @@ def _extract_session_and_payload(request_data: Union[AgentRequest, dict]):
     "Use body.reconnect=true to attach to a running stream.",
 )
 async def post_console_chat(
-    request_data: Union[AgentRequest, dict],
-    request: Request,
+    http_request: Request,
 ) -> StreamingResponse:
     """Stream agent response. Run continues in background after disconnect.
     Stop via POST /console/chat/stop. Reconnect with body.reconnect=true.
     """
-    workspace = await get_agent_for_request(request)
+    # Get raw JSON body to preserve all fields including meta
+    try:
+        request_data = await http_request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
+
+    workspace = await get_agent_for_request(http_request)
     console_channel = await workspace.channel_manager.get_channel("console")
     if console_channel is None:
         raise HTTPException(
@@ -98,7 +104,12 @@ async def post_console_chat(
     if len(native_payload["content_parts"]) > 0:
         content = native_payload["content_parts"][0]
         if content:
-            name = content.text[:10]
+            # Handle both dict and object formats
+            if isinstance(content, dict):
+                text_content = content.get("text", "")
+            else:
+                text_content = getattr(content, "text", "")
+            name = text_content[:10] if text_content else "Media Message"
         else:
             name = "Media Message"
     chat = await workspace.chat_manager.get_or_create_chat(

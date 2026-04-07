@@ -579,6 +579,9 @@ class MatrixChannel(BaseChannel):
         parts: List[OutgoingContentPart],
         meta: Optional[Dict[str, Any]] = None,
     ) -> None:
+        # Check if this is a forwarded message
+        is_forwarded = (meta or {}).get("forwarded", False)
+
         media_types = {
             ContentType.IMAGE,
             ContentType.VIDEO,
@@ -593,6 +596,9 @@ class MatrixChannel(BaseChannel):
         media_parts = [
             p for p in (parts or []) if getattr(p, "type", None) in media_types
         ]
+
+        # For forwarded messages, pass meta to super().send_content_parts
+        # so the send() method can add attribution
         if text_parts:
             await super().send_content_parts(to_handle, text_parts, meta)
         for m in media_parts:
@@ -832,44 +838,57 @@ class MatrixChannel(BaseChannel):
 
         if not text:
             return
-        
-        # room_id_for_session_id = None
-        # if meta is not None:
-        #     session_id = meta.get("session_id",None)
-        #     if session_id is not None:
-        #         manager :MultiAgentManager = getattr(self._workspace.runner, "_manager", None)
-        #         agent_ids = manager.list_loaded_agents()
-        #         for agent_id in agent_ids:
-        #             agent_workspace = await manager.get_agent(agent_id)
-        #             chats = await agent_workspace.chat_manager.list_chats(channel=self.channel)
-        #             for chat in chats:       
-        #                 if chat.meta is not None:    
-        #                     sid = chat.meta.get("session_id","")
-        #                     if sid == session_id:         
-        #                         room_id_for_session_id = chat.meta.get("room_id",None)
-        #                         break
-        #             if room_id_for_session_id is not None:
-        #                 break
+
+        # Check if this is a forwarded message
+        is_forwarded = (meta or {}).get("forwarded", False)
+        from_agent = (meta or {}).get("from_agent")
+
+        # Truncate if too long (Matrix has ~65536 byte limit)
+        # Note: Matrix limits bytes, not characters. Use UTF-8 encoding.
+        MAX_TEXT_BYTES = 60000  # Leave some margin for HTML formatting
+        text_bytes = text.encode('utf-8')
+        if len(text_bytes) > MAX_TEXT_BYTES:
+            # Truncate to byte limit, then decode back (may cut mid-char)
+            truncated_bytes = text_bytes[:MAX_TEXT_BYTES]
+            # Decode with errors='ignore' to handle partial characters
+            text = truncated_bytes.decode('utf-8', errors='ignore') + "\n\n... (message truncated)"
+            logger.warning(
+                "Matrix: message truncated from %d to %d bytes",
+                len(text_bytes),
+                MAX_TEXT_BYTES,
+            )
 
         logger.info(
-            "Matrix sending to room=%s text_len=%d",
+            "Matrix sending to room=%s text_len=%d forwarded=%s from_agent=%s",
             to_handle,
             len(text),
+            is_forwarded,
+            from_agent,
         )
+
+        # body stays unchanged (plain text for notifications/search)
+        body = text
+
+        # Convert markdown to HTML
         html_body = markdown.markdown(
             text,
             extensions=['fenced_code', 'tables', 'pymdownx.tasklist']
         )
 
-        # if room_id_for_session_id is not None:
-        #     to_handle = room_id_for_session_id
+        # Add agent signature in HTML only (not in body)
+        # Signature appears at bottom, styled subtly
+        if is_forwarded and from_agent:
+            html_body = (
+                f'{html_body}'
+                f'<br><small style="color:#888;">— by {from_agent}</small>'
+            )
 
         resp = await self.client.room_send(
             room_id=to_handle,
             message_type="m.room.message",
             content={
                 "msgtype": "m.text",
-                "body": text,
+                "body": body,
                 "format": "org.matrix.custom.html",
                 "formatted_body": html_body
             },
@@ -877,3 +896,44 @@ class MatrixChannel(BaseChannel):
 
         if isinstance(resp, RoomSendError):
             logger.error("Matrix room_send failed: %s", resp)
+
+    async def forward_to_room(
+        self,
+        room_id: str,
+        parts: List[OutgoingContentPart],
+        from_agent_name: Optional[str] = None,
+    ) -> bool:
+        """Forward a message to a Matrix room directly (without processing).
+
+        This is used for forwarding messages from Console channel to Matrix room.
+        The message is sent directly without triggering agent processing.
+
+        Args:
+            room_id: Matrix room ID to send to
+            parts: Content parts to send (text, images, etc.)
+            from_agent_name: Agent name for attribution (shown in HTML signature)
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self.client:
+            logger.error("Matrix client not initialized, cannot forward message")
+            return False
+
+        if not self.enabled:
+            logger.debug("Matrix channel disabled, skipping forward")
+            return False
+
+        try:
+            # Use send_content_parts to handle different content types
+            meta = {"forwarded": True, "from_agent": from_agent_name} if from_agent_name else {"forwarded": True}
+            await self.send_content_parts(room_id, parts, meta)
+            logger.info(
+                "Matrix forwarded message to room=%s from_agent=%s",
+                room_id,
+                from_agent_name,
+            )
+            return True
+        except Exception as e:
+            logger.error("Matrix forward_to_room failed: %s", e, exc_info=True)
+            return False

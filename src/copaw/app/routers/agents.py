@@ -39,6 +39,7 @@ class AgentSummary(BaseModel):
     description: str
     workspace_dir: str
     enabled: bool
+    matrix_enabled: bool = False  # Whether Matrix channel is enabled
 
 
 class AgentListResponse(BaseModel):
@@ -158,6 +159,17 @@ async def list_agents() -> AgentListResponse:
                     # Only PROFILE.md exists
                     description = profile_desc
 
+            # Check if Matrix channel is enabled
+            matrix_enabled = False
+            try:
+                channels = getattr(agent_config, "channels", None)
+                if channels:
+                    matrix_config = getattr(channels, "matrix", None)
+                    if matrix_config:
+                        matrix_enabled = getattr(matrix_config, "enabled", False)
+            except Exception:
+                pass
+
             agents.append(
                 AgentSummary(
                     id=agent_id,
@@ -165,6 +177,7 @@ async def list_agents() -> AgentListResponse:
                     description=description,
                     workspace_dir=agent_ref.workspace_dir,
                     enabled=getattr(agent_ref, "enabled", True),
+                    matrix_enabled=matrix_enabled,
                 ),
             )
         except Exception:  # noqa: E722
@@ -176,6 +189,7 @@ async def list_agents() -> AgentListResponse:
                     description="",
                     workspace_dir=agent_ref.workspace_dir,
                     enabled=getattr(agent_ref, "enabled", True),
+                    matrix_enabled=False,
                 ),
             )
 

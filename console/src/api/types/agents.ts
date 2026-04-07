@@ -6,6 +6,7 @@ export interface AgentSummary {
   description: string;
   workspace_dir: string;
   enabled: boolean;
+  matrix_enabled: boolean;
 }
 
 export interface AgentListResponse {

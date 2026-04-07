@@ -226,25 +226,35 @@ class BaseChannel(ABC):
         if not contents:
             return False
         for c in contents:
-            t = getattr(c, "type", None)
-            if (
-                t == ContentType.TEXT
-                and (getattr(c, "text", None) or "").strip()
-            ):
-                return True
-            if (
-                t == ContentType.REFUSAL
-                and (getattr(c, "refusal", None) or "").strip()
-            ):
-                return True
+            # Check dict format FIRST (getattr on dict returns <class 'type'>)
+            if isinstance(c, dict):
+                t = c.get("type")
+            else:
+                t = getattr(c, "type", None)
+            # Handle both ContentType enum and string "text"
+            is_text = t == ContentType.TEXT or t == "text"
+            is_refusal = t == ContentType.REFUSAL or t == "refusal"
+
+            if is_text:
+                text_val = c.get("text") if isinstance(c, dict) else getattr(c, "text", None)
+                if text_val and str(text_val).strip():
+                    return True
+            if is_refusal:
+                ref_val = c.get("refusal") if isinstance(c, dict) else getattr(c, "refusal", None)
+                if ref_val and str(ref_val).strip():
+                    return True
         return False
 
     def _content_has_audio(self, contents: List[Any]) -> bool:
         """True if contents has at least one AUDIO block."""
-        return any(
-            getattr(c, "type", None) == ContentType.AUDIO
-            for c in (contents or [])
-        )
+        for c in (contents or []):
+            if isinstance(c, dict):
+                t = c.get("type")
+            else:
+                t = getattr(c, "type", None)
+            if t == ContentType.AUDIO:
+                return True
+        return False
 
     def _apply_no_text_debounce(
         self,

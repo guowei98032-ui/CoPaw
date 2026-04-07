@@ -52,12 +52,12 @@ export const chatApi = {
 
     return url;
   },
-  listChats: (params?: { user_id?: string; channel?: string }) => {
+  listChats: (params?: { user_id?: string; channel?: string }, headers?: Record<string, string>) => {
     const searchParams = new URLSearchParams();
     if (params?.user_id) searchParams.append("user_id", params.user_id);
     if (params?.channel) searchParams.append("channel", params.channel);
     const query = searchParams.toString();
-    return request<ChatSpec[]>(`/chats${query ? `?${query}` : ""}`);
+    return request<ChatSpec[]>(`/chats${query ? `?${query}` : ""}`, { headers });
   },
 
   createChat: (chat: Partial<ChatSpec>) =>
@@ -66,8 +66,8 @@ export const chatApi = {
       body: JSON.stringify(chat),
     }),
 
-  getChat: (chatId: string) =>
-    request<ChatHistory>(`/chats/${encodeURIComponent(chatId)}`),
+  getChat: (chatId: string, headers?: Record<string, string>) =>
+    request<ChatHistory>(`/chats/${encodeURIComponent(chatId)}`, { headers }),
 
   updateChat: (chatId: string, chat: Partial<ChatSpec>) =>
     request<ChatSpec>(`/chats/${encodeURIComponent(chatId)}`, {

@@ -163,6 +163,12 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
       label: t("nav.heartbeat"),
     },
     {
+      key: "chatrooms",
+      icon: <SparkUserGroupLine size={18} />,
+      path: "/chatrooms",
+      label: t("nav.chatrooms", "ChatRooms"),
+    },
+    {
       key: "workspace",
       icon: <SparkLocalFileLine size={18} />,
       path: "/workspace",
@@ -267,6 +273,11 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
           key: "heartbeat",
           label: collapsed ? null : t("nav.heartbeat"),
           icon: <SparkVoiceChat01Line size={16} />,
+        },
+        {
+          key: "chatrooms",
+          label: collapsed ? null : t("nav.chatrooms", "ChatRooms"),
+          icon: <SparkUserGroupLine size={16} />,
         },
       ],
     },

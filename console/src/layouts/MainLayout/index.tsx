@@ -21,6 +21,8 @@ import SecurityPage from "../../pages/Settings/Security";
 import TokenUsagePage from "../../pages/Settings/TokenUsage";
 import VoiceTranscriptionPage from "../../pages/Settings/VoiceTranscription";
 import AgentsPage from "../../pages/Settings/Agents";
+import ChatroomsPage from "../../pages/Control/Chatrooms";
+import ChatroomDetailPage from "../../pages/Control/Chatrooms/Detail";
 
 const { Content } = Layout;
 
@@ -30,6 +32,7 @@ const pathToKey: Record<string, string> = {
   "/sessions": "sessions",
   "/cron-jobs": "cron-jobs",
   "/heartbeat": "heartbeat",
+  "/chatrooms": "chatrooms",
   "/skills": "skills",
   "/skill-pool": "skill-pool",
   "/tools": "tools",
@@ -64,6 +67,8 @@ export default function MainLayout() {
               <Route path="/sessions" element={<SessionsPage />} />
               <Route path="/cron-jobs" element={<CronJobsPage />} />
               <Route path="/heartbeat" element={<HeartbeatPage />} />
+              <Route path="/chatrooms" element={<ChatroomsPage />} />
+              <Route path="/chatrooms/:roomId" element={<ChatroomDetailPage />} />
               <Route path="/skills" element={<SkillsPage />} />
               <Route path="/skill-pool" element={<SkillPoolPage />} />
               <Route path="/tools" element={<ToolsPage />} />

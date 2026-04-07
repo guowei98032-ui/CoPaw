@@ -23,6 +23,19 @@ from .view_media import view_image, view_video
 from .memory_search import create_memory_search_tool
 from .get_current_time import get_current_time, set_user_timezone
 from .get_token_usage import get_token_usage
+from .task_management import (
+    task_list,
+    task_create,
+    task_update,
+    task_claim,
+    task_delete,
+)
+from .mailbox import (
+    mailbox_read,
+    mailbox_send,
+    mailbox_mark_read,
+    mailbox_broadcast,
+)
 
 __all__ = [
     "execute_python_code",
@@ -44,4 +57,13 @@ __all__ = [
     "get_current_time",
     "set_user_timezone",
     "get_token_usage",
+    "task_list",
+    "task_create",
+    "task_update",
+    "task_claim",
+    "task_delete",
+    "mailbox_read",
+    "mailbox_send",
+    "mailbox_mark_read",
+    "mailbox_broadcast",
 ]
