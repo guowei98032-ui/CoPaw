@@ -38,6 +38,17 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       include: ["diff"],
     },
+    // Vitest configuration
+    test: {
+      globals: true,
+      environment: "jsdom",
+      setupFiles: ["./src/test/setup.ts"],
+      include: ["src/**/*.{test,spec}.{ts,tsx}"],
+      coverage: {
+        reporter: ["text", "json", "html"],
+        exclude: ["node_modules/", "src/test/"],
+      },
+    },
     // build: {
     //   // Output to CoPaw's console directory,
     //   // so we don't need to copy files manually after build.

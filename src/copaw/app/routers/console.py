@@ -47,8 +47,12 @@ def _extract_session_and_payload(request_data: dict):
         elif isinstance(content_part, dict) and "content" in content_part:
             content_parts.extend(content_part["content"] or [])
 
-    # Debug: log extracted content_parts
-    print(f"[DEBUG] _extract_session_and_payload: content_parts={content_parts}", flush=True)
+    # Debug: log extracted data
+    logger.info(
+        "[DEBUG] _extract_session_and_payload: request_meta=%s, session_id=%s",
+        request_meta,
+        session_id,
+    )
 
     # Merge base meta with request meta (request meta takes precedence)
     meta = {
@@ -222,8 +226,22 @@ async def get_push_messages(
     """
     from ..console_push_store import get_recent, take
 
+    logger.info(
+        "[DEBUG] /push-messages called with session_id=%s",
+        session_id,
+    )
+
     if session_id:
         messages = await take(session_id)
+        logger.info(
+            "[DEBUG] /push-messages: took %d messages for session %s",
+            len(messages),
+            session_id,
+        )
     else:
         messages = await get_recent()
+        logger.info(
+            "[DEBUG] /push-messages: got %d recent messages",
+            len(messages),
+        )
     return {"messages": messages}

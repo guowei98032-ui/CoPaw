@@ -247,9 +247,26 @@ class AgentRunner(Runner):
         )
 
         # Set agent context for model creation
-        from ..agent_context import set_current_agent_id
+        from ..agent_context import set_current_agent_id, set_current_request_context
 
         set_current_agent_id(self.agent_id)
+
+        # Extract meta for request context (room_id, etc.)
+        meta = getattr(request, "meta", None)
+        if meta is None:
+            extra = getattr(request, "__pydantic_extra__", None)
+            if extra:
+                meta = extra.get("meta", {})
+        if meta is None:
+            meta = {}
+
+        # Set request context for tools to access
+        set_current_request_context({
+            "session_id": getattr(request, "session_id", ""),
+            "user_id": getattr(request, "user_id", ""),
+            "room_id": meta.get("room_id"),
+            "agent_id": self.agent_id,
+        })
 
         agent = None
         chat = None
@@ -293,6 +310,25 @@ class AgentRunner(Runner):
             # Load agent-specific configuration
             agent_config = load_agent_config(self.agent_id)
 
+            # Extract meta for chatroom context (must be before agent creation)
+            # AgentRequest has extra="allow", so meta is stored in __pydantic_extra__
+            meta = getattr(request, "meta", None)
+            if meta is None:
+                # Try __pydantic_extra__ for extra fields
+                extra = getattr(request, "__pydantic_extra__", None)
+                if extra:
+                    meta = extra.get("meta", {})
+            if meta is None:
+                meta = {}
+            room_id = meta.get("room_id", None)
+
+            # DEBUG: Log meta info
+            logger.info(
+                "[DEBUG] query_handler: request.meta=%s, room_id=%s",
+                meta,
+                room_id,
+            )
+
             agent = CoPawAgent(
                 agent_config=agent_config,
                 env_context=env_context,
@@ -303,6 +339,7 @@ class AgentRunner(Runner):
                     "user_id": user_id,
                     "channel": channel,
                     "agent_id": self.agent_id,
+                    "room_id": room_id,  # For chatroom tool loading
                     **(
                         {
                             "forced_tool_call_json": json.dumps(
@@ -375,8 +412,16 @@ class AgentRunner(Runner):
             # Rebuild system prompt so it always reflects the latest
             # AGENTS.md / SOUL.md / PROFILE.md, not the stale one saved
             # in the session state.
-            meta = getattr(request,"meta",{})
-            room_id = meta.get("room_id",None)
+            # AgentRequest has extra="allow", so meta is stored in __pydantic_extra__
+            meta = getattr(request, "meta", None)
+            if meta is None:
+                # Try __pydantic_extra__ for extra fields
+                extra = getattr(request, "__pydantic_extra__", None)
+                if extra:
+                    meta = extra.get("meta", {})
+            if meta is None:
+                meta = {}
+            room_id = meta.get("room_id", None)
             team_sys_prompt = None
             if room_id is not None:
                 manager = getattr(self, "_manager", None)

@@ -51,18 +51,37 @@ from .tools import (
     view_video,
     write_file,
     create_memory_search_tool,
-    task_list,
-    task_create,
-    task_update,
-    task_claim,
-    mailbox_read,
-    mailbox_send,
-    mailbox_broadcast,
 )
 from .utils import process_file_and_media_blocks_in_message
 from ..constant import (
     WORKING_DIR,
 )
+
+# ChatRoom tools - imported lazily to avoid affecting non-chatroom sessions
+_CHATROOM_TOOLS_LOADED = False
+_CHATROOM_TOOLS_CACHE: dict[str, Any] = {}
+
+
+def _get_chatroom_tools() -> dict[str, Any]:
+    """Lazy load chatroom tools only when needed.
+
+    Only one LLM tool is exposed:
+    - create_task: For Leader to create tasks during user conversation
+
+    All other task operations use structured JSON output in poll_service:
+    - Leader: {"tasks_to_create": [...]}
+    - Worker (idle): {"task_to_claim": "id"}
+    - Worker (busy): {"status": "completed|failed|cancelled", "reason": "..."}
+    """
+    global _CHATROOM_TOOLS_LOADED, _CHATROOM_TOOLS_CACHE
+    if not _CHATROOM_TOOLS_LOADED:
+        from .tools.task_management import create_task
+        _CHATROOM_TOOLS_CACHE = {
+            "create_task": create_task,
+        }
+        _CHATROOM_TOOLS_LOADED = True
+        logger.info("[DEBUG] Loaded chatroom tools: %s", list(_CHATROOM_TOOLS_CACHE.keys()))
+    return _CHATROOM_TOOLS_CACHE
 from ..agents.memory import BaseMemoryManager
 
 if TYPE_CHECKING:
@@ -259,7 +278,7 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
                 "all tools will be disabled",
             )
 
-        # Map of tool functions
+        # Map of core tool functions (always available)
         tool_functions = {
             "execute_shell_command": execute_shell_command,
             "read_file": read_file,
@@ -275,15 +294,26 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             "get_current_time": get_current_time,
             "set_user_timezone": set_user_timezone,
             "get_token_usage": get_token_usage,
-            # ChatRoom tools
-            "task_list": task_list,
-            "task_create": task_create,
-            "task_update": task_update,
-            "task_claim": task_claim,
-            "mailbox_read": mailbox_read,
-            "mailbox_send": mailbox_send,
-            "mailbox_broadcast": mailbox_broadcast,
         }
+
+        # Check if this is a chatroom session (via request_context)
+        # Only load chatroom tools when in a chatroom context
+        # Note: session_id format is "chatroom-{roomId}-{agentId}" (with hyphen)
+        is_chatroom_session = (
+            self._request_context.get("room_id") is not None
+            or self._request_context.get("session_id", "").startswith("chatroom-")
+        )
+
+        if is_chatroom_session:
+            # Lazy load chatroom tools only when needed
+            chatroom_tools = _get_chatroom_tools()
+            tool_functions.update(chatroom_tools)
+            logger.info(
+                "[DEBUG] ChatRoom session detected, loaded %d chatroom tools, room_id=%s, session_id=%s",
+                len(chatroom_tools),
+                self._request_context.get("room_id"),
+                self._request_context.get("session_id"),
+            )
 
         multimodal = get_active_model_supports_multimodal()
 
@@ -412,6 +442,25 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             heartbeat_enabled=heartbeat_enabled,
         )
         logger.debug("System prompt:\n%s...", sys_prompt[:100])
+
+        # Inject chatroom context if in a chatroom session
+        room_id = self._request_context.get("room_id") if self._request_context else None
+        if room_id:
+            try:
+                from ..app.chatroom_prompts import build_chatroom_context_prompt
+                chatroom_context = build_chatroom_context_prompt(
+                    room_id=room_id,
+                    agent_id=agent_id or "",
+                )
+                if chatroom_context:
+                    sys_prompt = chatroom_context + "\n\n" + sys_prompt
+                    logger.info(
+                        "[DEBUG] Injected chatroom context for room_id=%s, agent_id=%s",
+                        room_id,
+                        agent_id,
+                    )
+            except Exception as e:
+                logger.warning("Failed to build chatroom context: %s", e)
 
         # Inject multimodal capability awareness
         multimodal_hint = build_multimodal_hint()

@@ -287,7 +287,15 @@ class ConsoleChannel(BaseChannel):
             content_parts=content_parts,
             channel_meta=meta,
         )
+        # Set both channel_meta and meta for compatibility
+        # runner.py reads request.meta for room_id
         request.channel_meta = meta
+        request.meta = meta
+        logger.info(
+            "[DEBUG] build_agent_request_from_native: meta=%s, room_id=%s",
+            meta,
+            meta.get("room_id"),
+        )
         return request
 
     async def _extract_media_message(self, message: Message) -> Message | None:

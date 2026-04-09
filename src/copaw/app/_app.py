@@ -25,6 +25,7 @@ from ..envs import load_envs_into_environ
 from ..providers.provider_manager import ProviderManager
 from ..local_models.manager import LocalModelManager
 from .multi_agent_manager import MultiAgentManager
+from .chatroom_poll_service import ChatRoomPollService
 from .migration import (
     migrate_legacy_workspace_to_default_agent,
     migrate_legacy_skills_to_skill_pool,
@@ -196,6 +197,18 @@ async def lifespan(
     # Start all configured agents (handled by manager)
     await multi_agent_manager.start_all_configured_agents()
 
+    # --- ChatRoom poll service initialization ---
+    logger.info("Initializing ChatRoomPollService...")
+    chatroom_poll_service = ChatRoomPollService(
+        multi_agent_manager=multi_agent_manager,
+        default_poll_interval=30,  # 30 seconds default
+    )
+    await chatroom_poll_service.start()
+
+    # Set global reference for tools to access
+    from .chatroom_poll_service import set_poll_service
+    set_poll_service(chatroom_poll_service)
+
     # --- Model provider manager (non-reloadable, in-memory) ---
     provider_manager = ProviderManager.get_instance()
 
@@ -204,6 +217,7 @@ async def lifespan(
 
     # Expose to endpoints - multi-agent manager
     app.state.multi_agent_manager = multi_agent_manager
+    app.state.chatroom_poll_service = chatroom_poll_service
 
     # Connect DynamicMultiAgentRunner to MultiAgentManager
     if isinstance(runner, DynamicMultiAgentRunner):
@@ -242,6 +256,18 @@ async def lifespan(
     try:
         yield
     finally:
+        # Stop chatroom poll service
+        poll_svc = getattr(app.state, "chatroom_poll_service", None)
+        if poll_svc is not None:
+            logger.info("Stopping ChatRoomPollService...")
+            try:
+                await poll_svc.stop()
+            except Exception as e:
+                logger.error(f"Error stopping ChatRoomPollService: {e}")
+            # Clear global reference
+            from .chatroom_poll_service import set_poll_service
+            set_poll_service(None)
+
         local_model_mgr = getattr(app.state, "local_model_manager", None)
         if local_model_mgr is not None:
             logger.info("Stopping local model server...")

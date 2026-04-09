@@ -28,9 +28,9 @@ class TeamManager:
     async def get_team_sys_prompt(self,room_id,user_id):
         async with self._lock:
             if room_id is not None:
-                team_prompt = self._repo.get(f"{room_id}","无")
+                team_prompt = self._repo.get(f"{room_id}", "无")
                 if user_id is not None:
-                    user_prompt = self._repo.get(f"{room_id}:{user_id}","无")
+                    user_prompt = self._repo.get(f"{room_id}:{user_id}", "无")
                 else:
                     user_prompt = "无"
                 sys_prompt = f"""
@@ -42,12 +42,12 @@ class TeamManager:
                     """
                 return sys_prompt
             else:
-                sys_prompt = f"""
+                sys_prompt = """
                     环境：单Agent模式
                     协作提示：
-                    {team_prompt}
+                    无
                     自己情况提示：
-                    {user_prompt}
+                    无
                     """
                 return sys_prompt
 

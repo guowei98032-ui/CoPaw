@@ -18,6 +18,12 @@ _current_agent_id: ContextVar[Optional[str]] = ContextVar(
     default=None,
 )
 
+# Context variable to store current request context (room_id, etc.)
+_current_request_context: ContextVar[Optional[dict]] = ContextVar(
+    "current_request_context",
+    default=None,
+)
+
 
 async def get_agent_for_request(
     request: Request,
@@ -138,3 +144,21 @@ def get_current_agent_id() -> str:
     if agent_id:
         return agent_id
     return get_active_agent_id()
+
+
+def set_current_request_context(context: dict) -> None:
+    """Set current request context in context var.
+
+    Args:
+        context: Request context dict (contains room_id, session_id, etc.)
+    """
+    _current_request_context.set(context)
+
+
+def get_current_request_context() -> Optional[dict]:
+    """Get current request context from context var.
+
+    Returns:
+        Request context dict or None if not set
+    """
+    return _current_request_context.get()
