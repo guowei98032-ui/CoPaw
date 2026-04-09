@@ -1,0 +1,40 @@
+{
+  "$schema": "./lcm-config.schema.json",
+  "enabled": true,
+  "server": {
+    "host": "localhost",
+    "port": 3721
+  },
+  "database": {
+    "basePath": "./data",
+    "defaultDbName": "lcm.db"
+  },
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "apiKey": "sk-your-api-key-here",
+    "baseUrl": "https://api.openai.com/v1",
+    "timeout": 30000
+  },
+  "embedding": {
+    "backend": "openai",
+    "apiKey": "sk-your-api-key-here",
+    "baseUrl": "https://api.openai.com/v1",
+    "modelName": "text-embedding-3-small",
+    "dimensions": 1536,
+    "enableCache": true,
+    "maxCacheSize": 3000,
+    "maxInputLength": 8192,
+    "maxBatchSize": 10
+  },
+  "compaction": {
+    "contextThreshold": 0.75,
+    "freshTailCount": 32,
+    "maxContextTokens": 128000,
+    "autoCompact": true
+  },
+  "logging": {
+    "level": "info",
+    "debug": false
+  }
+}

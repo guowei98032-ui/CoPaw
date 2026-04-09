@@ -1,0 +1,41 @@
+======================================================================
+LCM Force Compaction Test (Testing Summary Model)
+======================================================================
+
+Step 1: Initialize session...
+  ✅ Session initialized
+
+Step 2: Ingest many messages to exceed token budget...
+  Creating 100 messages...
+  ✅ Ingested batch 1/10
+  ✅ Ingested batch 2/10
+  ✅ Ingested batch 3/10
+  ✅ Ingested batch 4/10
+  ✅ Ingested batch 5/10
+  ✅ Ingested batch 6/10
+  ✅ Ingested batch 7/10
+  ✅ Ingested batch 8/10
+  ✅ Ingested batch 9/10
+  ✅ Ingested batch 10/10
+
+Step 3: Force compaction (this will test summary model)...
+  ⏳ This may take 10-30 seconds for LLM summarization...
+
+Step 4: Check compaction result...
+  ✅✅✅ COMPACTION SUCCESSFUL! ✅✅✅
+     - Compacted: True
+     - Reason: compacted
+     - OK: True
+
+  🎉 Summary model is working correctly!
+  🎉 No 'no summary model candidates' error!
+
+Step 5: Get session stats...
+  Stats: {'sessionId': 'test_force_compact', 'active': True}
+
+Step 6: Close session...
+  ✅ Session closed
+
+======================================================================
+✅ TEST PASSED: Summary model configuration is working!
+======================================================================

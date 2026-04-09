@@ -1,0 +1,12 @@
+# LCM Server - Ignore sensitive configuration
+lcm-config.json
+
+# Keep the example file for reference
+!lcm-config.example.json
+
+# Database files
+data/*.db
+
+# Logs
+logs/
+*.log

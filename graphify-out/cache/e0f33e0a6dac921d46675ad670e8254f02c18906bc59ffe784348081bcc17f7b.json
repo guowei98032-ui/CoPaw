@@ -1,0 +1,1 @@
+{"nodes": [{"id": "language", "label": "language.ts", "file_type": "code", "source_file": "console\\src\\api\\modules\\language.ts", "source_location": "L1"}], "edges": [{"source": "language", "target": "request", "relation": "imports_from", "confidence": "EXTRACTED", "source_file": "console\\src\\api\\modules\\language.ts", "source_location": "L1", "weight": 1.0}]}

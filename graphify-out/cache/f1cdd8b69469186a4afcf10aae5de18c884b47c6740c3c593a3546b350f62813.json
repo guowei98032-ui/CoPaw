@@ -1,0 +1,1 @@
+{"nodes": [{"id": "init", "label": "__init__.py", "file_type": "code", "source_file": "src\\copaw\\app\\approvals\\__init__.py", "source_location": "L1"}], "edges": [{"source": "init", "target": "service", "relation": "imports_from", "confidence": "EXTRACTED", "source_file": "src\\copaw\\app\\approvals\\__init__.py", "source_location": "L4", "weight": 1.0}]}

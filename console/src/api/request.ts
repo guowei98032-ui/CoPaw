@@ -84,10 +84,12 @@ export async function request<T = unknown>(
     const contentType = response.headers.get("content-type") || "";
     const errorMessage = getErrorMessageFromBody(text, contentType);
 
-    throw new Error(
-      errorMessage ||
-        `Request failed: ${response.status} ${response.statusText}`,
-    );
+    // Preserve raw body for parseErrorDetail() to extract structured fields
+    const finalMessage = errorMessage
+      ? `${errorMessage} - ${text}`
+      : `Request failed: ${response.status} ${response.statusText}`;
+
+    throw new Error(finalMessage);
   }
 
   if (response.status === 204) {

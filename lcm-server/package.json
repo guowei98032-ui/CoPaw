@@ -1,0 +1,23 @@
+{
+  "name": "lcm-server",
+  "version": "1.0.0",
+  "description": "LCM HTTP Server - Thin wrapper for lossless-claw package",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx tsx index.js",
+    "dev": "npx tsx watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "optionalDependencies": {
+    "@martian-engineering/lossless-claw": "^0.5.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}

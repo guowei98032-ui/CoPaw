@@ -1,0 +1,1 @@
+{"nodes": [{"id": "security", "label": "security.ts", "file_type": "code", "source_file": "console\\src\\api\\modules\\security.ts", "source_location": "L1"}], "edges": [{"source": "security", "target": "request", "relation": "imports_from", "confidence": "EXTRACTED", "source_file": "console\\src\\api\\modules\\security.ts", "source_location": "L1", "weight": 1.0}]}

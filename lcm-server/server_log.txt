@@ -1,0 +1,59 @@
+[LCM] Configuration loaded from: C:\workspace\CoPaw\lcm-server\lcm-config.json
+[LCM] lossless-claw package loaded successfully
+[LCM] LcmContextEngine type: function
+[DEBUG createCompleteFn] Config: {
+  "provider": "openai",
+  "model": "qwen3.5-plus",
+  "apiKey": "***16be4fa5",
+  "baseUrl": "https://coding.dashscope.aliyuncs.com/v1"
+}
+[LCM] Dependencies created, databasePath: data\lcm.db
+[LCM] LLM Provider: openai
+[LCM] LLM Model: qwen3.5-plus
+(node:65572) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[LCM] Server running on port 3721
+[LCM] Health check: http://localhost:3721/health
+[LCM] Config file: loaded
+[LCM] ✅ Engine ready, waiting for sessions
+[DEBUG createCompleteFn] Config: {
+  "provider": "openai",
+  "model": "qwen3.5-plus",
+  "apiKey": "none",
+  "baseUrl": "https://api.openai.com/v1"
+}
+[LCM] Creating database at: ./data/test_force.db
+[LCM] Engine created for session: test_force_compact (lazy bootstrap)
+[DEBUG] resolveSummaryCandidates called with legacyParams: {
+  "provider": "openai",
+  "model": "qwen3.5-plus",
+  "config": {
+    "plugins": {
+      "entries": {
+        "lossless-claw": {
+          "config": {
+            "summaryProvider": "openai",
+            "summaryModel": "qwen3.5-plus"
+          }
+        }
+      }
+    },
+    "agents": {
+      "defaults": {
+        "model": "qwen3.5-plus",
+        "compaction": {
+          "model": "qwen3.5-plus"
+        }
+      }
+    }
+  }
+}
+[DEBUG] deps.config: {
+  "summaryProvider": "",
+  "summaryModel": ""
+}
+[LCM] ⚠️ [lcm] summaryModel "qwen3.5-plus" at "OpenClaw agents.defaults.compaction.model" has no summaryProvider or provider prefix. Will attempt resolution without provider.
+[LCM] ⚠️ [lcm] summaryModel "qwen3.5-plus" at "OpenClaw agents.defaults.model" has no summaryProvider or provider prefix. Will attempt resolution without provider.
+[LCM] Engine closed for session: test_force_compact
+
+C:\workspace\CoPaw\lcm-server>

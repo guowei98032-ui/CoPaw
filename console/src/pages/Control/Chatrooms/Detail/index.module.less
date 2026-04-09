@@ -1,0 +1,241 @@
+.detailPage {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tabCard {
+  flex: 1;
+  overflow: auto;
+}
+
+.loadingState {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 48px;
+}
+
+// Chat container - vertical layout (column)
+.chatContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 800px;
+}
+
+// First row section wrapper
+.firstRowSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.firstRowHeader {
+  font-size: 13px;
+  color: #888;
+  padding-left: 4px;
+  font-weight: 500;
+}
+
+// First row: Leader + Matrix (side by side, horizontal)
+.firstRow {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  height: 500px;
+  width: 100%;
+  transition: all 0.3s ease;
+
+  // Default: leader 1:2 matrix
+  .leaderSection {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+  }
+
+  .matrixSection {
+    flex: 2 1 0;
+    min-width: 0;
+    height: 100%;
+  }
+
+  // When leader is expanded: leader 2:1 matrix
+  &.leaderExpanded {
+    .leaderSection {
+      flex: 2 1 0;
+    }
+
+    .matrixSection {
+      flex: 1 1 0;
+    }
+  }
+}
+
+// Other agents section wrapper
+.otherAgentsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.otherAgentsHeader {
+  font-size: 13px;
+  color: #888;
+  padding-left: 4px;
+  font-weight: 500;
+}
+
+// Other agents grid: 3 per row - fixed height
+.otherAgentsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 500px;  // Fixed row height
+  gap: 16px;
+  width: 100%;
+}
+
+// Agent chat wrapper - fixed height, no auto growth
+.agentChatWrapper {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  height: 100%;
+  max-height: 500px;  // Prevent auto growth
+  width: 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.3s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+}
+
+// Matrix panel - fixed height
+.matrixPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 500px;
+  width: 100%;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.matrixPanelHeader {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+
+.matrixPanelTitle {
+  font-weight: 500;
+  font-size: 14px;
+  color: #333;
+}
+
+.matrixPanelContent {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.agentChatHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: linear-gradient(to bottom, #fafafa, #f5f5f5);
+  border-bottom: 1px solid #e8e8e8;
+  flex-shrink: 0;
+}
+
+.agentName {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  color: #262626;
+}
+
+.agentChatContent {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+// Dark mode support
+:global(.dark) {
+  .chatContainer {
+    background: transparent;
+  }
+
+  .firstRowHeader,
+  .otherAgentsHeader {
+    color: #666;
+  }
+
+  .agentChatWrapper {
+    border-color: #434343;
+    background: #141414;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  .agentChatHeader {
+    background: linear-gradient(to bottom, #1f1f1f, #262626);
+    border-bottom-color: #434343;
+  }
+
+  .agentName {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .matrixPanel {
+    border-color: #434343;
+    background: #141414;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .matrixPanelHeader {
+    background: #1a1a1a;
+    border-bottom-color: #303030;
+  }
+
+  .matrixPanelTitle {
+    color: rgba(255, 255, 255, 0.88);
+  }
+}

@@ -1,0 +1,184 @@
+.taskList, .messageList, .roomInfo {
+  padding: 16px;
+}
+
+.taskSummary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.taskHeader, .messageHeader {
+  margin-bottom: 16px;
+}
+
+.messageItem {
+  background: #fafafa;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.messageItem:hover {
+  background: #f0f0f0;
+}
+
+.messageUnread {
+  border-left: 3px solid #1890ff;
+  background: #e6f7ff;
+}
+
+.messageTime {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #999;
+}
+
+/* Kanban Board Styles */
+.kanbanBoard {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  overflow-x: auto;
+  min-height: 500px;
+}
+
+.kanbanColumn {
+  flex: 0 0 280px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 250px);
+}
+
+.kanbanColumnHeader {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fff;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.kanbanColumnTitle {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.kanbanColumnContent {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.kanbanEmpty {
+  text-align: center;
+  color: #999;
+  padding: 24px;
+}
+
+.kanbanCard {
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.kanbanCard:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+}
+
+.taskId {
+  font-family: monospace;
+  font-size: 12px;
+  color: #666;
+}
+
+.cardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.taskSubject {
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.cardRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cardFooter {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Dependency Graph Styles */
+.dependencyGraph {
+  padding: 16px;
+}
+
+.dependencyGraphEmpty {
+  padding: 48px;
+  text-align: center;
+}
+
+.graphLegend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.graphContainer {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 24px;
+  min-height: 400px;
+}
+
+.graphNodeContent {
+  font-size: 12px;
+}
+
+.graphNodeId {
+  font-family: monospace;
+  font-size: 11px;
+  color: #666;
+  display: flex;
+  align-items: center;
+}
+
+.graphNodeSubject {
+  font-weight: 500;
+  margin: 4px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphNodeStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
